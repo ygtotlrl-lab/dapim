@@ -76,7 +76,7 @@ textarea.in{min-height:84px;resize:vertical}
 .pv.open{display:flex}
 .pv-h{display:flex;align-items:center;gap:10px;background:var(--deep);color:#fff;padding:10px 14px;font-weight:700;font-size:15px}
 .pv-h span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.pv-x{background:none;border:0;color:#fff;font-size:22px;line-height:1;cursor:pointer;padding:4px 8px}
+.pv-x{background:none;border:0;color:#fff;cursor:pointer;width:36px;height:36px;padding:0;display:inline-flex;align-items:center;justify-content:center}
 .pv-b{flex:1;overflow:auto;padding:12px;display:flex;flex-direction:column;align-items:center;gap:12px;-webkit-overflow-scrolling:touch}
 .pv-b canvas{max-width:100%;height:auto;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.3)}
 .pv-b .ld{color:#fff;margin-top:40px}

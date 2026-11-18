@@ -153,7 +153,7 @@
     var hf=byType('hebdate'), gf=byType('gdate'); DATES_OK=false;
     if(!hf||!gf||!V[hf.id]||!V[gf.id]) return;
     var h=V[hf.id], g=noon(V[gf.id]), hg=heb(g), hn=heb(addDay(g,1));
-    if(same(h,hg)){ DATES_OK=true; SUNSET=false; toast('✓ שני התאריכים תואמים'); return; }
+    if(same(h,hg)){ DATES_OK=true; SUNSET=false; toast('שני התאריכים תואמים'); return; }
     var cmp='<div class="cmp">תאריך עברי שנבחר: <b>'+hebLabel(h)+'</b><br>תאריך לועזי שנבחר: <b>'+gLabel(V[gf.id])+'</b> (= <b>'+hebLabel(hg)+'</b>)</div>';
     if(same(h,hn)) dlg('<h3>הפרש של יום אחד</h3><p>התאריך העברי מאוחר ביום אחד מהתאריך הלועזי. כך זה כשהתלמיד נולד בערב, אחרי השקיעה — אז כבר מתחיל היום העברי הבא.</p>'+cmp+
       '<label class="chk"><input type="checkbox" id="sun"><span><b style="color:var(--text)">התלמיד נולד אחרי השקיעה</b></span></label>'+
@@ -278,7 +278,7 @@
     var ch=t.closest('[data-chips] button'); if(ch){var box=ch.parentNode,id=box.getAttribute('data-chips');box.querySelectorAll('button').forEach(function(x){x.classList.toggle('on',x===ch);});V[id]=ch.getAttribute('data-v');clearErr(id);return;}
     var hp=t.closest('[data-hpick]'); if(hp){hpick(hp.getAttribute('data-hpick'));return;}
     var ho=t.closest('[data-hok]'); if(ho){hpickOk(ho.getAttribute('data-hok'));return;}
-    if(t.closest('[data-sunok]')){ if(!$('sun').checked){toast('יש לסמן את התיבה, או לחזור לתיקון',true);return;} SUNSET=true;DATES_OK=true;dlgClose();toast('✓ נשמר: נולד אחרי השקיעה');return;}
+    if(t.closest('[data-sunok]')){ if(!$('sun').checked){toast('יש לסמן את התיבה, או לחזור לתיקון',true);return;} SUNSET=true;DATES_OK=true;dlgClose();toast('נשמר: נולד אחרי השקיעה');return;}
     if(t.closest('[data-close]')||t===$('veil')){dlgClose();return;}
     if(t.closest('#send')){send();return;}
   });

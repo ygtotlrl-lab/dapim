@@ -77,11 +77,9 @@
     cb: function (s) { return s.k === 'cb'; },
     'new': function (s) { return s.k === 'new'; },
     na: function (s) { return s.k === 'na'; },
-    done: function (s) { return s.k === 'done'; },
-    mine: function (s, p) { return callsOf(p.client_id).some(function (c) { return c.ambassador === st.amb && isToday(c.call_at); }); },
-    gave: function (s, p) { return callsOf(p.client_id).some(function (c) { return c.ambassador === st.amb && GIVE.indexOf(c.status) >= 0 && isToday(c.call_at); }); }
+    done: function (s) { return s.k === 'done'; }
   };
-  var TITLES = { queue: 'התור', cb: 'לחזור', 'new': 'טרם התקשרו', na: 'לא ענו', done: 'סיימו', mine: 'השיחות שלי היום', gave: 'התרומות שלי היום' };
+  var TITLES = { queue: 'התור', cb: 'לחזור', 'new': 'טרם התקשרו', na: 'לא ענו', done: 'סיימו' };
   function matches() {
     var q = st.q.trim().toLowerCase(), qd = digits(q), f = FILTERS[st.f] || FILTERS.queue, rows = [];
     st.people.forEach(function (p) {
@@ -101,14 +99,15 @@
   }
 
   // ── המסך ──
+  // הלוח — נתונים בלבד, לא סינון: כמה בתור, והשיחות והתרומות של השגריר היום.
   function dashHTML() {
-    var n = { queue: 0, cb: 0 };
-    st.people.forEach(function (p) { var s = pState(p); if (s.k !== 'done') n.queue++; if (s.k === 'cb') n.cb++; });
+    var queue = 0;
+    st.people.forEach(function (p) { if (pState(p).k !== 'done') queue++; });
     var mine = st.calls.filter(function (c) { return c.ambassador === st.amb && isToday(c.call_at); });
     var gave = mine.filter(function (c) { return GIVE.indexOf(c.status) >= 0; });
     var total = gave.reduce(function (a, c) { return a + (Number(c.amount) || 0); }, 0);
-    return [['queue', 'בתור', n.queue], ['cb', 'לחזור', n.cb], ['mine', 'שיחות היום', mine.length], ['gave', 'תרומות היום', gave.length, total ? ils(total) : '']].map(function (t) {
-      return '<button class="k' + (st.f === t[0] ? ' on' : '') + '" data-act="filter" data-v="' + t[0] + '"><span>' + t[1] + '</span><b>' + t[2] + '</b>' + (t[3] ? '<small>' + t[3] + '</small>' : '') + '</button>';
+    return [['בתור', queue], ['השיחות שלי היום', mine.length], ['התרומות שלי היום', gave.length], ['הסכום שלי היום', ils(total), 'ok']].map(function (t) {
+      return '<div class="k' + (t[2] ? ' ' + t[2] : '') + '"><span>' + t[0] + '</span><b>' + t[1] + '</b></div>';
     }).join('');
   }
   function badge(s) {

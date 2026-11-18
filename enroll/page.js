@@ -1,0 +1,331 @@
+// dapim/enroll/page.js — טופס הרישום (הנהלה רוחנית)
+(function(){
+  var A = self.APP && self.APP.supabase;
+  var IC = {
+    cal:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M8 3v4M16 3v4M3.5 10h17"/></svg>',
+    next:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>',
+    prev:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>',
+    img:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><circle cx="9" cy="10" r="1.8"/><path d="M20.5 16l-5-5-8.5 8.5"/></svg>',
+    ok:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>'
+,
+    ext:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>'
+  };
+  // הערך על הישיבה בחב״דפדיה — מתחת למצגת
+  var ABOUT_URL = 'https://chabadpedia.co.il/wiki/%D7%AA%D7%95%D7%9E%D7%9B%D7%99_%D7%AA%D7%9E%D7%99%D7%9E%D7%99%D7%9D_%D7%A8%D7%90%D7%A9%D7%95%D7%9F_%D7%9C%D7%A6%D7%99%D7%95%D7%9F_(%D7%92%D7%93%D7%95%D7%9C%D7%94)';
+  function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+  function $(id){return document.getElementById(id);}
+
+  // ── הלוח העברי (Intl) ──
+  var HM = {Tishri:'תשרי',Heshvan:'חשוון',Kislev:'כסלו',Tevet:'טבת',Shevat:'שבט',Adar:'אדר','Adar I':'אדר א׳','Adar II':'אדר ב׳',Nisan:'ניסן',Iyar:'אייר',Sivan:'סיוון',Tamuz:'תמוז',Av:'אב',Elul:'אלול'};
+  function heb(d){
+    var o={}; new Intl.DateTimeFormat('en-u-ca-hebrew',{day:'numeric',month:'long',year:'numeric'}).formatToParts(d).forEach(function(p){o[p.type]=p.value;});
+    return {d:+o.day, m:HM[o.month]||o.month, y:+o.year};
+  }
+  function leap(y){return ((7*y+1)%19)<7;}
+  function months(y){return ['תשרי','חשוון','כסלו','טבת','שבט'].concat(leap(y)?['אדר א׳','אדר ב׳']:['אדר'],['ניסן','אייר','סיוון','תמוז','אב','אלול']);}
+  var L1=['','א','ב','ג','ד','ה','ו','ז','ח','ט'],L10=['','י','כ','ל','מ','נ','ס','ע','פ','צ'],L100=['','ק','ר','ש','ת','תק','תר','תש','תת','תתק'];
+  function gem(n){
+    var s=L100[Math.floor(n/100)]+(n%100===15?'טו':n%100===16?'טז':L10[Math.floor(n%100/10)]+L1[n%10]);
+    return s.length>1?s.slice(0,-1)+'״'+s.slice(-1):s+'׳';
+  }
+  function hebLabel(h){return gem(h.d)+' '+h.m+' '+gem(h.y%1000);}
+  function noon(s){var p=s.split('-');return new Date(+p[0],+p[1]-1,+p[2],12);}
+  function addDay(d,n){var x=new Date(d);x.setDate(x.getDate()+n);return x;}
+  function same(a,b){return a.d===b.d&&a.m===b.m&&a.y===b.y;}
+  function gLabel(s){var p=s.split('-');return (+p[2])+'.'+(+p[1])+'.'+p[0];}
+  // שנת הלימודים לפי השעון: השנה העברית, ומא׳ אלול — כבר הבאה (זמן אלול פותח את השנה)
+  var TODAY=heb(new Date()), CUR=TODAY.y+(TODAY.m==='אלול'?1:0);
+
+  // ── מצב ──
+  var CFG=null, V={}, FILES={}, UP={}, RID=null, IDF=null, IDKIND='id', YEAR=CUR+1, SUNSET=false, DATES_OK=false;
+
+  function toast(msg,bad){var t=$('toast');t.textContent=msg;t.className='toast on'+(bad?' bad':'');clearTimeout(toast._t);toast._t=setTimeout(function(){t.className='toast'+(bad?' bad':'');},2600);}
+  function dlg(html){$('bx').innerHTML=html;$('veil').classList.add('open');}
+  function dlgClose(){$('veil').classList.remove('open');}
+
+  // ── המצגת: מתחלפת כל interval שניות, נעצרת כשהעכבר או האצבע עליה, חיצים והחלקה, במעגל ──
+  function carousel(imgs,sec){
+    if(!imgs.length) return '<div class="car ph" aria-hidden="true">'+IC.img+'</div>';
+    return '<div class="car" id="car">'+imgs.map(function(u,i){return '<img src="'+esc(u)+'" alt=""'+(i?' loading="lazy"':' class="on"')+'>';}).join('')+
+      (imgs.length>1?'<span class="cap" id="cap">תמונה מהווי הישיבה · 1 מתוך '+imgs.length+'</span>':'')+(imgs.length>1?'<button class="ar r" data-car="-1" aria-label="הקודמת">'+IC.next+'</button><button class="ar l" data-car="1" aria-label="הבאה">'+IC.prev+'</button>':'')+
+      '</div>'+(imgs.length>1?'<div class="dots" id="dots">'+imgs.map(function(_,i){return '<i'+(i?'':' class="on"')+'></i>';}).join('')+'</div>':'');
+  }
+  function carWire(n,sec){
+    var car=$('car'); if(!car||n<2) return;
+    var i=0, hold=false, t=null, x0=null;
+    function show(k){i=(k+n)%n;car.querySelectorAll('img').forEach(function(im,j){im.classList.toggle('on',j===i);});$('dots').querySelectorAll('i').forEach(function(d,j){d.classList.toggle('on',j===i);});$('cap').textContent='תמונה מהווי הישיבה · '+(i+1)+' מתוך '+n;}
+    function tick(){clearInterval(t);t=setInterval(function(){if(!document.body.contains(car)){clearInterval(t);return;}if(!hold)show(i+1);},Math.max(2,sec)*1000);}
+    car.addEventListener('click',function(e){var b=e.target.closest('[data-car]');if(b){show(i+(+b.getAttribute('data-car')));tick();}});
+    car.addEventListener('pointerenter',function(){hold=true;});car.addEventListener('pointerleave',function(){hold=false;});
+    car.addEventListener('touchstart',function(e){hold=true;x0=e.touches[0].clientX;},{passive:true});
+    car.addEventListener('touchend',function(e){hold=false;if(x0==null)return;var dx=e.changedTouches[0].clientX-x0;x0=null;if(Math.abs(dx)>40){show(i+(dx<0?-1:1));tick();}},{passive:true});
+    tick();
+  }
+
+  // ── השדות ──
+  function fieldHTML(f){
+    var req=f.req?' <span class="q">*</span>':'', help=f.help?'<small>'+esc(f.help)+'</small>':'';
+    var head='<span class="t">'+esc(f.label)+req+'</span>'+help, body='';
+    if(f.type==='select') body='<div class="chips" data-chips="'+f.id+'">'+(f.options||[]).map(function(o){return '<button type="button" data-v="'+esc(o)+'">'+esc(o)+'</button>';}).join('')+'</div>';
+    else if(f.type==='textarea') body='<textarea class="in" data-id="'+f.id+'"></textarea>';
+    else if(f.type==='hebdate') body='<button type="button" class="pick" data-hpick="'+f.id+'"><span class="e">בחירה</span>'+IC.cal+'</button>';
+    else if(f.type==='gdate') body='<label class="pick"><span class="e" data-gshow="'+f.id+'">בחירה</span>'+IC.cal+'<input type="date" data-id="'+f.id+'" max="'+new Date().toISOString().slice(0,10)+'"></label>';
+    else if(f.type==='file') body='<div class="up-pick"><label class="up">＋ העלאת קובץ<input type="file" accept="image/*,application/pdf" data-file="'+f.id+'"></label>'+
+      '<button type="button" class="up up-cam" data-cam="'+f.id+'">'+(window.Capture?Capture.icon:'')+'<span>צילום</span></button></div><span class="nm up-nm" data-fname="'+f.id+'"></span>';
+    else if(f.type==='consent') return '<div class="f" data-f="'+f.id+'"><label class="chk"><input type="checkbox" data-id="'+f.id+'"><span>'+esc(f.label)+req+'</span></label><span class="msg">שדה חובה</span></div>';
+    else {
+      var tp=f.type==='email'?'email':f.type==='tel'?'tel':'text', im=f.type==='tel'||f.type==='idnum'?' inputmode="numeric"':'';
+      body='<input class="in" type="'+tp+'"'+im+(tp!=='text'||f.type==='idnum'?' dir="ltr"':'')+' data-id="'+f.id+'" autocomplete="off">';
+    }
+    return '<div class="f" data-f="'+f.id+'">'+head+body+'<span class="msg">שדה חובה</span></div>';
+  }
+  function render(){
+    // «פתוח לרישום» / «פתוח לחתימה» כבוי בהגדרות — הודעה במקום הטופס; בלי הסימון (תצורה ישנה) — פתוח
+    if(CFG.open===false){$('main').innerHTML='<div class="msgc">הטופס סגור כעת.</div>';return;}
+    var html=carousel(CFG.images||[],CFG.interval)+
+      '<a class="about" href="'+ABOUT_URL+'" target="_blank" rel="noopener">אודות הישיבה - חב"דפדיה'+IC.ext+'</a>'+
+      '<p class="req-note">השדות המסומנים ב-* הם חובה.</p>'+
+      '<div class="yr" id="yr"></div>';
+    // מספר הזהות — ראשון, ושאר הטופס נעול עד שממלאים אותו (form-gate.js)
+    var idf=(CFG.fields||[]).filter(function(f){return f.type==='idnum';})[0]; IDF=idf?idf.id:null;
+    if(IDF) html+=FormGate.html()+'<div id="fb">';
+    var n=0, open=false;
+    (CFG.fields||[]).forEach(function(f){
+      if(f.id===IDF) return;
+      if(f.type==='section'){ if(open) html+='</section>'; n++; html+='<section class="sec"><h2><b>'+n+'</b>'+esc(f.label)+'</h2>'; open=true; return; }
+      if(!open){ html+='<section class="sec">'; open=true; }
+      html+=fieldHTML(f);
+    });
+    if(open) html+='</section>';
+    if(CFG.privacy) html+='<p class="priv">'+esc(CFG.privacy)+'</p>';
+    html+='<button class="btn" id="send" type="button">שליחת הטופס</button>'+(IDF?FormGate.savedNote()+'</div>':'')+'<div class="foot">יחי אדוננו מורנו ורבינו מלך המשיח לעולם ועד</div>';
+    $('main').innerHTML=html;
+    yearLine(); carWire((CFG.images||[]).length,CFG.interval||4);
+    if(IDF) FormGate.mount({form:'enroll', A:A,
+      state:function(){return {V:V, UP:UP, RID:RID, YEAR:YEAR, SUNSET:SUNSET, DATES_OK:DATES_OK};},
+      restore:function(d){V=d.V||{};UP=d.UP||{};RID=d.RID||null;YEAR=d.YEAR||YEAR;SUNSET=!!d.SUNSET;DATES_OK=!!d.DATES_OK;fillDom();yearLine();},
+      onOpen:function(id,kind){V[IDF]=id;IDKIND=kind;if(!RID)RID=cid();},
+      onReset:function(){var id=V[IDF];V={};UP={};FILES={};SUNSET=false;DATES_OK=false;V[IDF]=id;RID=cid();fillDom();}});
+  }
+  // הטיוטה שנטענה — לתוך השדות שבמסך
+  function fillDom(){
+    (CFG.fields||[]).forEach(function(f){
+      if(f.id===IDF||f.type==='section') return;
+      var v=V[f.id];
+      if(f.type==='select'){var box=document.querySelector('[data-chips="'+f.id+'"]');if(box)box.querySelectorAll('button').forEach(function(x){x.classList.toggle('on',v!=null&&x.getAttribute('data-v')===v);});return;}
+      if(f.type==='hebdate'){var b=document.querySelector('[data-hpick="'+f.id+'"] span');if(b){b.className=v?'v':'e';b.textContent=v?hebLabel(v):'בחירה';}return;}
+      if(f.type==='file'){var nm=document.querySelector('[data-fname="'+f.id+'"]');if(nm)nm.textContent=UP[f.id]?UP[f.id].name:'';return;}
+      var el=document.querySelector('[data-id="'+f.id+'"]'); if(!el) return;
+      if(f.type==='consent'){el.checked=!!v;return;}
+      if(f.type==='gdate'){el.value=v||'';var g=document.querySelector('[data-gshow="'+f.id+'"]');if(g){g.className=v?'v':'e';g.textContent=v?gLabel(v):'בחירה';}return;}
+      el.value=v==null?'':v;
+    });
+  }
+  function yearLine(){
+    $('yr').innerHTML=YEAR===CUR+1
+      ? '<span>רישום לשנת הלימודים הקרובה</span> · <button type="button" data-year="'+CUR+'">לשנת הלימודים הנוכחית</button>'
+      : '<span>רישום לשנת הלימודים הנוכחית</span> · <button type="button" data-year="'+(CUR+1)+'">לשנת הלימודים הקרובה</button>';
+  }
+  function fdef(id){return (CFG.fields||[]).filter(function(f){return f.id===id;})[0];}
+  function byType(t){return (CFG.fields||[]).filter(function(f){return f.type===t;})[0];}
+
+  // ── בורר התאריך העברי ──
+  var HY_FIRST=5765, HY_LAST=5795;
+  function hpick(id){
+    var cur=V[id]||{d:1,m:'תשרי',y:TODAY.y-14}, ys=[];
+    for(var y=HY_LAST;y>=HY_FIRST;y--) ys.push(y); // תשס״ה עד תשצ״ה
+    function opts(list,sel,lab){return list.map(function(v){return '<option value="'+esc(v)+'"'+(v==sel?' selected':'')+'>'+esc(lab?lab(v):v)+'</option>';}).join('');}
+    function days(){var a=[];for(var i=1;i<=30;i++)a.push(i);return a;}
+    dlg('<h3>'+esc(fdef(id).label)+'</h3><div class="sels">'+
+      '<select id="hd">'+opts(days(),cur.d,gem)+'</select>'+
+      '<select id="hm">'+opts(months(cur.y),cur.m)+'</select>'+
+      '<select id="hy">'+opts(ys,cur.y,function(y){return gem(y%1000);})+'</select></div>'+
+      '<div class="row2"><button class="btn out" type="button" data-close>ביטול</button><button class="btn" type="button" data-hok="'+id+'">אישור</button></div>');
+    $('hy').onchange=function(){var m=$('hm').value,ms=months(+this.value);if(ms.indexOf(m)<0)m=ms.indexOf('אדר')<0?'אדר א׳':'אדר';$('hm').innerHTML=opts(ms,m);};
+  }
+  function hpickOk(id){
+    V[id]={d:+$('hd').value,m:$('hm').value,y:+$('hy').value};
+    var b=document.querySelector('[data-hpick="'+id+'"]'); b.querySelector('span').className='v'; b.querySelector('span').textContent=hebLabel(V[id]);
+    dlgClose(); clearErr(id); SUNSET=false; checkDates();
+  }
+  // ── ההצלבה: שני התאריכים נבחרו ⟵ תואמים · יום אחד אחרי (נולד אחרי השקיעה) · אין התאמה ──
+  function checkDates(){
+    var hf=byType('hebdate'), gf=byType('gdate'); DATES_OK=false;
+    if(!hf||!gf||!V[hf.id]||!V[gf.id]) return;
+    var h=V[hf.id], g=noon(V[gf.id]), hg=heb(g), hn=heb(addDay(g,1));
+    if(same(h,hg)){ DATES_OK=true; SUNSET=false; toast('✓ שני התאריכים תואמים'); return; }
+    var cmp='<div class="cmp">תאריך עברי שנבחר: <b>'+hebLabel(h)+'</b><br>תאריך לועזי שנבחר: <b>'+gLabel(V[gf.id])+'</b> (= <b>'+hebLabel(hg)+'</b>)</div>';
+    if(same(h,hn)) dlg('<h3>הפרש של יום אחד</h3><p>התאריך העברי מאוחר ביום אחד מהתאריך הלועזי. כך זה כשהתלמיד נולד בערב, אחרי השקיעה — אז כבר מתחיל היום העברי הבא.</p>'+cmp+
+      '<label class="chk"><input type="checkbox" id="sun"><span><b style="color:var(--text)">התלמיד נולד אחרי השקיעה</b></span></label>'+
+      '<div class="row2"><button class="btn out" type="button" data-close>חזרה לתיקון</button><button class="btn" type="button" data-sunok>אישור</button></div>');
+    else dlg('<h3>התאריכים אינם תואמים</h3><p>התאריך העברי שנבחר אינו מתאים לתאריך הלועזי. נא לבדוק את שניהם.</p>'+cmp+'<button class="btn" type="button" data-close>חזרה לתיקון</button>');
+  }
+
+  // ── בדיקה ושליחה ──
+  function clearErr(id){var f=document.querySelector('[data-f="'+id+'"]');if(f)f.classList.remove('err');}
+  function setErr(id,msg){var f=document.querySelector('[data-f="'+id+'"]');if(!f)return;f.classList.add('err');if(msg)f.querySelector('.msg').textContent=msg;}
+  function collect(){
+    var bad=null;
+    (CFG.fields||[]).forEach(function(f){
+      if(f.type==='section') return;
+      var v=V[f.id], empty=(f.type==='file')?!(UP[f.id]||FILES[f.id]):(f.type==='consent')?!v:(v==null||String(typeof v==='object'?'x':v).trim()==='');
+      if(f.req&&empty){setErr(f.id,'שדה חובה');bad=bad||f.id;return;}
+      if(!empty&&f.type==='email'&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v).trim())){setErr(f.id,'כתובת אימייל אינה תקינה');bad=bad||f.id;}
+    });
+    var hf=byType('hebdate'),gf=byType('gdate');
+    if(!bad&&hf&&gf&&V[hf.id]&&V[gf.id]&&!DATES_OK){checkDates();return 'dates';}
+    if(bad){var el=document.querySelector('[data-f="'+bad+'"]');if(el)el.scrollIntoView({behavior:'smooth',block:'center'});toast('יש למלא את השדות המסומנים',true);}
+    return bad;
+  }
+  function cid(){var a=new Uint8Array(8);crypto.getRandomValues(a);return Array.prototype.map.call(a,function(b){return (b+256).toString(16).slice(1);}).join('');}
+  function hdrs(x){return x||{};}
+  async function send(){
+    if(collect()) return;
+    var b=$('send'); b.disabled=true; b.textContent='שולח…';
+    var id=RID||cid(), files={};
+    try{
+      for(var k0 in UP) if(UP[k0]) files[k0]=UP[k0];
+      for(var k in FILES){
+        if(!FILES[k]||files[k]) continue;
+        var file=FILES[k], ext=(file.name.split('.').pop()||'bin').toLowerCase().replace(/[^a-z0-9]/g,'').slice(0,5)||'bin';
+        var path='enroll/'+YEAR+'/'+id+'/'+k+'.'+ext;
+        var r=await fetch(A.url+'/functions/v1/hr-gate?a=put&p='+encodeURIComponent(path),{method:'POST',headers:hdrs({'Content-Type':file.type||'application/octet-stream'}),body:file});
+        if(!r.ok) throw new Error('upload '+r.status);
+        files[k]={path:path,name:file.name};
+      }
+      var data={};
+      (CFG.fields||[]).forEach(function(f){
+        if(f.type==='section'||f.type==='file') return;
+        var v=V[f.id]; if(v==null||v==='') return;
+        data[f.id]=f.type==='hebdate'?hebLabel(v):f.type==='gdate'?gLabel(v):f.type==='consent'?'מאשר':String(v).trim();
+      });
+      if(IDF&&IDKIND==='pp') data._idtype='דרכון';
+      if(SUNSET) data._sunset='נולד אחרי השקיעה';
+      var row={client_id:id,school_year:YEAR,data:data,files:files,updated_at:Date.now()};
+      var r2=await fetch(A.url+'/functions/v1/hr-pub',{method:'POST',body:JSON.stringify({action:'submit',form:'enroll',row:row})});
+      if(!r2.ok) throw new Error('insert '+r2.status);
+      if(IDF) FormGate.drop();
+      done(id,data,files);
+    }catch(e){
+      console.warn('[enroll] השליחה נכשלה',e);
+      b.disabled=false; b.textContent='שליחת הטופס';
+      toast('השליחה נכשלה — נא לנסות שוב',true);
+    }
+  }
+  function done(id,data,files){
+    var name=[data.first,data.last].filter(Boolean).join(' ');
+    $('main').innerHTML='<div class="ok"><div class="c">'+IC.ok+'</div><h2>תודה רבה!</h2><p>הטופס נשלח בהצלחה</p></div>'+
+      '<button class="btn" id="pdf" type="button">הורדת העתק הטופס (PDF)</button><div class="foot">יחי אדוננו מורנו ורבינו מלך המשיח לעולם ועד</div>';
+    window.scrollTo(0,0);
+    $('pdf').onclick=function(){copyPdf(id,data,files,name);};
+  }
+
+  // ── ההעתק לממלא: דף A4 מהתשובות, מצולם ל-PDF (html2canvas · jsPDF) ──
+  function loadScript(src){return new Promise(function(ok,no){var s=document.createElement('script');s.src=src;s.onload=ok;s.onerror=no;document.head.appendChild(s);});}
+  async function copyPdf(id,data,files,name){
+    var b=$('pdf'); b.disabled=true; b.textContent='מכין את הקובץ…';
+    try{
+      if(!window.html2canvas) await loadScript('https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js');
+      if(!window.jspdf) await loadScript('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js');
+      var now=new Date(), rows='';
+      (CFG.fields||[]).forEach(function(f){
+        if(f.type==='section'){rows+='<tr class="sh"><th colspan="2">'+esc(f.label)+'</th></tr>';return;}
+        var v=f.type==='file'?(files[f.id]?files[f.id].name:''):(data[f.id]||'');
+        if(f.type==='hebdate'&&data._sunset) v+=' ('+data._sunset+')';
+        rows+='<tr><th>'+esc(f.label)+'</th><td>'+esc(v)+'</td></tr>';
+      });
+      var c=$('copy');
+      c.innerHTML='<div class="hd"><img src="../hr/logo-white.png" alt=""><div><h1>טופס רישום</h1><div>ישיבת תומכי תמימים ראשון לציון</div></div></div>'+
+        '<div class="meta"><span>'+(YEAR===CUR+1?'רישום לשנת הלימודים הקרובה':'רישום לשנת הלימודים הנוכחית')+' ('+gem(YEAR%1000)+')</span><span>נשלח: '+now.toLocaleDateString('he-IL')+' '+now.toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'})+' · אסמכתא '+id.slice(0,8).toUpperCase()+'</span></div>'+
+        '<table>'+rows+'</table>';
+      var canvas=await html2canvas(c,{scale:2,backgroundColor:'#ffffff',logging:false});
+      var pdf=new jspdf.jsPDF({unit:'pt',format:'a4'}), W=pdf.internal.pageSize.getWidth(), H=pdf.internal.pageSize.getHeight();
+      var ph=Math.floor(canvas.width*H/W), y=0, first=true;
+      while(y<canvas.height){
+        var part=document.createElement('canvas'); part.width=canvas.width; part.height=Math.min(ph,canvas.height-y);
+        part.getContext('2d').drawImage(canvas,0,y,canvas.width,part.height,0,0,canvas.width,part.height);
+        if(!first) pdf.addPage(); first=false;
+        pdf.addImage(part.toDataURL('image/jpeg',.92),'JPEG',0,0,W,part.height*W/canvas.width);
+        y+=ph;
+      }
+      pdf.save('טופס רישום — '+(name||'העתק')+'.pdf');
+    }catch(e){ console.warn('[enroll] ההעתק נכשל',e); toast('הכנת הקובץ נכשלה — נא לנסות שוב',true); }
+    b.disabled=false; b.textContent='הורדת העתק הטופס (PDF)';
+  }
+
+  // ── האזנה אחת לכל אירוע, בהאצלה ──
+  // קובץ שנבחר או צולם — נשמר ב-FILES ושמו מוצג מתחת לשני הכפתורים
+  function setFile(fk,file,label){FILES[fk]=file||null;delete UP[fk];document.querySelector('[data-fname="'+fk+'"]').textContent=file?(label||file.name):'';if(file){clearErr(fk);if(IDF)upNow(fk,file,label);}}
+  // קובץ עולה מיד לטיוטה — כך הוא נשאר גם כשיוצאים וחוזרים
+  async function upNow(fk,file,label){
+    var nm=document.querySelector('[data-fname="'+fk+'"]');
+    try{
+      var orig=file;
+      if(window.Capture&&!file.pages) file=await Capture.compress(file);
+      if(FILES[fk]!==orig) return;
+      FILES[fk]=file;
+      var ext=(file.name.split('.').pop()||'bin').toLowerCase().replace(/[^a-z0-9]/g,'').slice(0,5)||'bin';
+      var path='enroll/'+YEAR+'/'+RID+'/'+fk+'-'+Date.now()+'.'+ext;
+      var r=await fetch(A.url+'/functions/v1/hr-gate?a=put&p='+encodeURIComponent(path),{method:'POST',headers:hdrs({'Content-Type':file.type||'application/octet-stream'}),body:file});
+      if(!r.ok) throw new Error('upload '+r.status);
+      UP[fk]={path:path,name:label||file.name}; FormGate.save();
+    }catch(e){console.warn('[enroll] ההעלאה נכשלה',e);toast('העלאת הקובץ נכשלה — נא לנסות שוב',true);if(nm)nm.textContent='';FILES[fk]=null;}
+  }
+  document.addEventListener('click',function(e){
+    var t=e.target;
+    var cam=t.closest('[data-cam]'); if(cam&&window.Capture){var ck=cam.getAttribute('data-cam');Capture.camera({title:'צילום מסמך',name:'צילום'}).then(function(file){if(file)setFile(ck,file,'צילום · '+(file.pages===1?'עמוד אחד':file.pages+' עמודים'));});return;}
+    var y=t.closest('[data-year]'); if(y){YEAR=+y.getAttribute('data-year');yearLine();return;}
+    var ch=t.closest('[data-chips] button'); if(ch){var box=ch.parentNode,id=box.getAttribute('data-chips');box.querySelectorAll('button').forEach(function(x){x.classList.toggle('on',x===ch);});V[id]=ch.getAttribute('data-v');clearErr(id);return;}
+    var hp=t.closest('[data-hpick]'); if(hp){hpick(hp.getAttribute('data-hpick'));return;}
+    var ho=t.closest('[data-hok]'); if(ho){hpickOk(ho.getAttribute('data-hok'));return;}
+    if(t.closest('[data-sunok]')){ if(!$('sun').checked){toast('יש לסמן את התיבה, או לחזור לתיקון',true);return;} SUNSET=true;DATES_OK=true;dlgClose();toast('✓ נשמר: נולד אחרי השקיעה');return;}
+    if(t.closest('[data-close]')||t===$('veil')){dlgClose();return;}
+    if(t.closest('#send')){send();return;}
+  });
+  document.addEventListener('input',function(e){var id=e.target.getAttribute&&e.target.getAttribute('data-id');if(id&&e.target.type!=='checkbox'&&e.target.type!=='date'){V[id]=e.target.value;clearErr(id);}});
+  document.addEventListener('change',function(e){
+    var t=e.target, id=t.getAttribute('data-id'), fk=t.getAttribute('data-file');
+    if(fk){var raw=t.files&&t.files[0]||null;setFile(fk,raw);if(!IDF&&raw&&window.Capture)Capture.compress(raw).then(function(c){if(FILES[fk]===raw)FILES[fk]=c;});return;}
+    if(!id) return;
+    if(t.type==='checkbox'){V[id]=t.checked;clearErr(id);return;}
+    if(t.type==='date'){V[id]=t.value||null;var s=document.querySelector('[data-gshow="'+id+'"]');s.className=t.value?'v':'e';s.textContent=t.value?gLabel(t.value):'בחירה';clearErr(id);SUNSET=false;checkDates();}
+  });
+
+  if(!A){$('main').innerHTML='<div class="msgc">הטופס אינו זמין</div>';return;}
+  // ההגדרה האחרונה שנשמרה במכשיר (IndexedDB) מציירת את הטופס כשנקראה; החדשה מחליפה אותה כשהגיעה — אם השתנתה ועוד לא התחילו למלא.
+  try{localStorage.removeItem('hr_cache_enroll_form');localStorage.removeItem('hr_cache_intake_form');}catch(e){}
+  var KEY='enroll_form', shown=null, fresh=false;
+  function cfgOk(c){return !!(c&&Array.isArray(c.fields));}
+  // מסד קטן לדפים הציבוריים, רשומה אחת לטופס; כל כשל — null, והטופס נטען מהרשת
+  function idb(mode,op){
+    return new Promise(function(res){
+      try{
+        var o=indexedDB.open('hr-public',1);
+        o.onupgradeneeded=function(){o.result.createObjectStore('cfg');};
+        o.onerror=o.onblocked=function(){res(null);};
+        o.onsuccess=function(){
+          try{var db=o.result, tx=db.transaction('cfg',mode), rq=op(tx.objectStore('cfg'));
+            tx.oncomplete=function(){db.close();res(rq.result);};
+            tx.onerror=tx.onabort=function(){db.close();res(null);};
+          }catch(e){res(null);}
+        };
+      }catch(e){res(null);}
+    });
+  }
+  function show(j){
+    if(j===shown) return;
+    if(shown&&(Object.keys(V).length||Object.keys(FILES).length)) return;
+    CFG=JSON.parse(j); FormTexts.apply(CFG.texts); render(); shown=j;
+  }
+  var cached=idb('readonly',function(st){return st.get(KEY);}).then(function(j){
+    try{ if(!fresh&&typeof j==='string'&&cfgOk(JSON.parse(j))) show(j); }catch(e){}
+  });
+  (self.FORM_CFG||Promise.reject(new Error('no config')))
+    .then(function(rows){
+      var c=JSON.parse(rows[0].value); if(!cfgOk(c)) throw new Error('no form');
+      var j=JSON.stringify(c); fresh=true;
+      idb('readwrite',function(st){return st.put(j,KEY);});
+      show(j);
+    })
+    .catch(function(){ cached.then(function(){ if(!shown) $('main').innerHTML='<div class="msgc">אין חיבור — נסו שוב מאוחר יותר</div>'; }); });
+})();

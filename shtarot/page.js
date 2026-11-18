@@ -163,16 +163,17 @@
         '<a class="ib" href="' + esc(waLink(p.phone)) + '" target="_blank" rel="noopener noreferrer" aria-label="וואטסאפ" title="וואטסאפ">' + icon('chat') + '</a>' +
         '<button class="ib" data-act="close" aria-label="סגירה">' + icon('close') + '</button></div></div><div class="body">';
     if (facts.length) h += '<dl class="facts">' + facts.map(function (f) { return '<div><dt>' + f[0] + '</dt><dd>' + esc(f[1]) + '</dd></div>'; }).join('') + '</dl>';
-    h += '<div class="fld"><span>לא נוצר קשר</span><div class="os">' + oBtn('na', s) + oBtn('wrong', s) + '</div></div>' +
-      '<div class="fld"><span>תוצאת השיחה</span><div class="os">' + ['yes', 'pl', 'int', 'cb', 'no', 'rmv'].map(function (k) { return oBtn(k, s); }).join('') + '</div></div>';
-    if (GIVE.indexOf(s) >= 0) {
-      h += '<label class="fld"><span>סכום</span><input class="inp" id="amt" data-fld inputmode="decimal" value="' + esc(cur.amount == null ? '' : cur.amount) + '"></label>' +
+    var give = GIVE.indexOf(s) >= 0;
+    h += '<div id="form"><div class="fld"><span>לא נוצר קשר</span><div class="os">' + oBtn('na', s) + oBtn('wrong', s) + '</div></div>' +
+      '<div class="fld"><span>תוצאת השיחה</span><div class="os">' + ['yes', 'pl', 'int', 'cb', 'no', 'rmv'].map(function (k) { return oBtn(k, s); }).join('') + '</div></div>' +
+      '<div id="give-box"' + (give ? '' : ' hidden') + '><label class="fld"><span>סכום</span><input class="inp" id="amt" inputmode="decimal" value="' + esc(cur && cur.amount != null ? cur.amount : '') + '"></label>' +
         '<div class="fld"><span>אמצעי</span><div class="os" role="radiogroup" aria-label="אמצעי">' + st.methods.map(function (m) {
-          return '<button type="button" class="o' + (cur.method === m ? ' on' : '') + '" role="radio" aria-checked="' + (cur.method === m) + '" data-act="method" data-v="' + esc(m) + '">' + esc(m) + '</button>';
-        }).join('') + '</div></div>';
-    }
-    if (s === 'cb') h += '<label class="fld"><span>מתי לחזור</span><input class="inp" type="datetime-local" id="when" data-fld value="' + esc(localInput(cur.callback_at)) + '"></label>';
-    h += '<label class="fld"><span>סיכום השיחה</span><textarea class="inp" id="note" data-fld rows="3" placeholder="מה נאמר, מה הוסכם…">' + esc(cur ? cur.note || '' : '') + '</textarea></label>';
+          var on = !!cur && cur.method === m;
+          return '<button type="button" class="o' + (on ? ' on' : '') + '" role="radio" aria-checked="' + on + '" data-act="method" data-v="' + esc(m) + '">' + esc(m) + '</button>';
+        }).join('') + '</div></div></div>' +
+      '<label class="fld" id="when-box"' + (s === 'cb' ? '' : ' hidden') + '><span>מתי לחזור</span><input class="inp" type="datetime-local" id="when" value="' + esc(cur ? localInput(cur.callback_at) : '') + '"></label>' +
+      '<label class="fld"><span>סיכום השיחה</span><textarea class="inp" id="note" rows="3" placeholder="מה נאמר, מה הוסכם…">' + esc(cur ? cur.note || '' : '') + '</textarea></label>' +
+      '<button class="btn save" data-act="save">' + (cur ? 'עדכון השיחה' : 'שמירת השיחה') + '</button></div>';
     if (hist.length) {
       h += '<div class="sec">שיחות קודמות<span class="cnt">' + hist.length + '</span></div><div class="hist">' + hist.map(function (c) {
         var d = STATUS[c.status] || { l: c.status, cls: '' };
@@ -192,6 +193,33 @@
     if (inn) inn.innerHTML = cardHTML(p);
     else win.innerHTML = '<div class="win" role="dialog" aria-modal="true" aria-label="' + esc(p.name || NO_NAME) + '"><div class="win-bg" data-act="close"></div><div class="win-in">' + cardHTML(p) + '</div></div>';
     if (top) $('.win', win).scrollTop = 0;
+    snap = formState();
+  }
+
+  // ── שינויים שלא נשמרו ──
+  // הטופס נשמר בכפתור; יציאה ממנו כשהשתנה — שאלה: «שמירה» · «סגירה בלי שמירה», והרקע — חזרה לטופס.
+  var snap = '';
+  function pickedStatus() { var on = $('.o.on[data-act="st"]'); return on ? on.dataset.v : ''; }
+  function formState() {
+    var f = $('#form'); if (!f) return '';
+    var on = $('.o.on[data-act="method"]');
+    return [pickedStatus(), on ? on.dataset.v : '', ($('#amt') || {}).value, ($('#when') || {}).value, ($('#note') || {}).value].join('\u0001');
+  }
+  function dirty() { return !!st.open && formState() !== snap; }
+  function leave(go) {
+    if (!dirty()) { go(); return; }
+    var box = document.createElement('div');
+    box.className = 'ask';
+    box.innerHTML = '<div class="ask-bg" data-ask="back"></div><div class="ask-in" role="alertdialog" aria-modal="true" aria-label="שינויים שלא נשמרו">' +
+      '<h3>שינויים שלא נשמרו</h3><p>לשמור את השיחה לפני היציאה?</p>' +
+      '<div class="ask-btns"><button class="btn ghost" data-ask="drop">סגירה בלי שמירה</button><button class="btn" data-ask="save">שמירה</button></div></div>';
+    document.body.appendChild(box);
+    box.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-ask]'); if (!b) return;
+      box.remove();
+      if (b.dataset.ask === 'drop') go();
+      else if (b.dataset.ask === 'save') { var w = save(); if (w) w.then(function (ok) { if (ok) go(); }); }
+    });
   }
 
   // ── הנעילה — בשער ──
@@ -220,35 +248,34 @@
     }
     return at(st.nav.indexOf(st.open) + d);
   }
-  function close() { release(st.open); st.open = null; st.call = null; beatSet(); winDraw(); refresh(); }
+  function close() { release(st.open); st.open = null; st.call = null; snap = ''; beatSet(); winDraw(); refresh(); }
 
   // ── השיחה ──
-  function fields(s) {
-    var a = $('#amt'), w = $('#when'), n = $('#note'), on = $('.o.on[data-act="method"]');
-    var give = GIVE.indexOf(s) >= 0;
-    return { amount: give && a && a.value.trim() !== '' ? Number(a.value.replace(/[^\d.]/g, '')) : null,
-             method: give && on ? on.dataset.v : null,
-             callback_at: s === 'cb' && w && w.value ? new Date(w.value).toISOString() : null,
-             note: n && n.value.trim() ? n.value.trim() : null };
-  }
-  function send(s, redraw) {
-    var p = personById(st.open);
-    if (!p) return;
-    var c = fields(s);
-    if (c.amount != null && !(c.amount > 0)) { toast('נא להזין סכום גדול מאפס', true); return; }
+  function save() {
+    var p = personById(st.open), s = pickedStatus();
+    if (!p) return null;
+    if (!STATUS[s]) { toast('נא לבחור את תוצאת השיחה', true); return null; }
+    var give = GIVE.indexOf(s) >= 0, a = $('#amt'), w = $('#when'), n = $('#note'), on = $('.o.on[data-act="method"]');
+    var c = { amount: give && a && a.value.trim() !== '' ? Number(a.value.replace(/[^\d.]/g, '')) : null,
+              method: give && on ? on.dataset.v : null,
+              callback_at: s === 'cb' && w && w.value ? new Date(w.value).toISOString() : null,
+              note: n && n.value.trim() ? n.value.trim() : null };
+    if (c.amount != null && !(c.amount > 0)) { toast('נא להזין סכום גדול מאפס', true); return null; }
     c.status = s; c.person_client_id = p.client_id;
     c.client_id = st.call || (crypto.randomUUID ? crypto.randomUUID() : 'pg-' + Date.now() + '-' + Math.random().toString(36).slice(2));
     return gate({ a: 'call', call: c }).then(function (r) {
-      if (!r.ok || !r.call) { toast('השמירה נכשלה — נסו שוב', true); return; }
+      if (!r.ok || !r.call) { toast('השמירה נכשלה — נסו שוב', true); return false; }
       st.call = r.call.client_id;
       var i = st.calls.findIndex(function (x) { return x.client_id === r.call.client_id; });
       if (i >= 0) st.calls[i] = r.call; else st.calls.push(r.call);
       ix = null;
-      if (redraw) winDraw();
+      winDraw();
       var d = $('#dash'), l = $('#list');
       if (d) d.innerHTML = dashHTML();
       if (l) l.innerHTML = listHTML();
-    }, function () { toast('אין חיבור — השינוי לא נשמר', true); });
+      toast('השיחה נשמרה');
+      return true;
+    }, function () { toast('אין חיבור — השיחה לא נשמרה', true); return false; });
   }
 
   // ── המאזינים ──
@@ -259,28 +286,21 @@
     if (a === 'filter') { st.f = el.dataset.v; st.lim = PAGE; refresh(); }
     else if (a === 'more') { st.lim += PAGE * 4; refresh(); }
     else if (a === 'open') open(el.dataset.id);
-    else if (a === 'close') close();
-    else if (a === 'step') step(+el.dataset.d);
-    else if (a === 'st') send(el.dataset.v, true);
-    else if (a === 'method') {
-      cur = st.call && callById(st.call);
-      if (!cur) return;
-      var was = el.classList.contains('on');
-      document.querySelectorAll('.o[data-act="method"]').forEach(function (b) { b.classList.remove('on'); b.setAttribute('aria-checked', 'false'); });
-      if (!was) { el.classList.add('on'); el.setAttribute('aria-checked', 'true'); }
-      send(cur.status, false);
+    else if (a === 'close') leave(close);
+    else if (a === 'step') { var d = +el.dataset.d; leave(function () { step(d); }); }
+    else if (a === 'save') save();
+    else if (a === 'st' || a === 'method') {
+      var was = el.classList.contains('on'), grp = a === 'st' ? 'aria-pressed' : 'aria-checked';
+      document.querySelectorAll('.o[data-act="' + a + '"]').forEach(function (b) { b.classList.remove('on'); b.setAttribute(grp, 'false'); });
+      if (!was) { el.classList.add('on'); el.setAttribute(grp, 'true'); }
+      if (a === 'st') { var v = pickedStatus(); $('#give-box').hidden = GIVE.indexOf(v) < 0; $('#when-box').hidden = v !== 'cb'; }
     }
     else if (a === 'reload') location.reload();
   });
   document.addEventListener('input', function (e) {
     if (e.target.id === 'q') { st.q = e.target.value; st.lim = PAGE; var l = $('#list'); if (l) l.innerHTML = listHTML(); }
   });
-  document.addEventListener('change', function (e) {
-    if (!e.target.hasAttribute || !e.target.hasAttribute('data-fld')) return;
-    var cur = st.call && callById(st.call);
-    if (cur) send(cur.status, false);
-  });
-  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && st.open) close(); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && st.open && !$('.ask')) leave(close); });
   window.addEventListener('pagehide', function () { if (st.open) release(st.open, true); });
 
   function fail(title, text, retry) {

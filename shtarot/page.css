@@ -111,3 +111,12 @@ textarea.inp{resize:vertical;min-height:84px}
 #toast{position:fixed;inset-inline:0;bottom:24px;display:flex;justify-content:center;pointer-events:none;z-index:40}
 #toast div{background:var(--brand-fill);color:var(--on-brand);border-radius:16px;padding:10px 18px;font-weight:700;box-shadow:var(--shadow);max-width:90%}
 #toast div.warn{background:var(--bad)}
+[hidden]{display:none !important}
+.btn.save{width:100%;margin-bottom:16px}
+.ask{position:fixed;inset:0;z-index:30;display:grid;place-items:center;padding:16px}
+.ask-bg{position:fixed;inset:0;background:var(--veil)}
+.ask-in{position:relative;background:var(--card);border-radius:22px;padding:20px;max-width:360px;width:100%;box-shadow:var(--shadow)}
+.ask-in h3{font-size:18px;color:var(--brand-ink);margin-bottom:6px}
+.ask-in p{color:var(--text-2);margin-bottom:16px}
+.ask-btns{display:flex;gap:8px}
+.ask-btns .btn{flex:1}

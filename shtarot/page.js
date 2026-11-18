@@ -191,7 +191,7 @@
     var inn = $('.win-in', win);
     if (inn) inn.innerHTML = cardHTML(p);
     else win.innerHTML = '<div class="win" role="dialog" aria-modal="true" aria-label="' + esc(p.name || NO_NAME) + '"><div class="win-bg" data-act="close"></div><div class="win-in">' + cardHTML(p) + '</div></div>';
-    if (top) $('.win', win).scrollTop = 0;
+    if (top) $('.win-in', win).scrollTop = 0;
     snap = formState();
   }
 

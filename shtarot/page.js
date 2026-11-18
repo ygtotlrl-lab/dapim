@@ -7,7 +7,7 @@
   var RETRY_MS = 2 * 60 * 60 * 1000, BEAT_MS = 60 * 1000, POLL_MS = 30 * 1000, PAGE = 60;
   var STATUS = {
     na: { l: 'לא ענה', cls: '' }, wrong: { l: 'מספר שגוי', cls: '' }, yes: { l: 'תרם', cls: 'ok' }, pl: { l: 'התחייב', cls: 'gold' },
-    int: { l: 'מעוניין — לשלוח פרטים', cls: 'brand' }, cb: { l: 'לחזור אליו', cls: 'warn' },
+    int: { l: 'ממתין לפרטים', cls: 'brand' }, cb: { l: 'לחזור אליו', cls: 'warn' },
     no: { l: 'לא מעוניין', cls: '' }, rmv: { l: 'להסיר מהרשימה', cls: 'bad' }
   };
   var GIVE = ['yes', 'pl'];
@@ -72,14 +72,14 @@
     if (last.status === 'na') { t = Date.parse(last.call_at) + RETRY_MS; return { k: 'na', rank: t <= now ? 2 : 3, at: t, last: last }; }
     return { k: 'done', rank: 9, at: Date.parse(last.call_at), last: last };
   }
-  var FILTERS = {
-    queue: function (s) { return s.k !== 'done'; },
-    cb: function (s) { return s.k === 'cb'; },
-    'new': function (s) { return s.k === 'new'; },
-    na: function (s) { return s.k === 'na'; },
-    done: function (s) { return s.k === 'done'; }
-  };
-  var TITLES = { queue: 'התור', cb: 'לחזור', 'new': 'טרם התקשרו', na: 'לא ענו', done: 'סיימו' };
+  // הסינון — «כל התור», «טרם התקשרו», וכפתור לכל תוצאה, בשמה ובסדרה כמו בתפריט התוצאות שבשיחה; כמו באפליקציה.
+  var ORDER = ['na', 'wrong', 'yes', 'pl', 'int', 'cb', 'no', 'rmv'];
+  var FILTERS = { queue: function (s) { return s.k !== 'done'; }, 'new': function (s) { return s.k === 'new'; } };
+  var FILTER_LIST = [['queue', 'כל התור'], ['new', 'טרם התקשרו']], TITLES = { queue: 'התור', 'new': 'טרם התקשרו' };
+  ORDER.forEach(function (k) {
+    FILTERS[k] = function (s) { return !!s.last && s.last.status === k; };
+    FILTER_LIST.push([k, STATUS[k].l]); TITLES[k] = STATUS[k].l;
+  });
   function matches() {
     var q = st.q.trim().toLowerCase(), qd = digits(q), f = FILTERS[st.f] || FILTERS.queue, rows = [];
     st.people.forEach(function (p) {
@@ -134,7 +134,7 @@
   function viewHTML() {
     return '<section class="dash" id="dash">' + dashHTML() + '</section>' +
       '<section class="card"><input class="inp search" id="q" aria-label="חיפוש לפי שם או טלפון" placeholder="חיפוש לפי שם או טלפון" value="' + esc(st.q) + '">' +
-        '<div class="seg" role="group" aria-label="סינון">' + [['queue', 'כל התור'], ['cb', 'לחזור'], ['new', 'טרם התקשרו'], ['na', 'לא ענו'], ['done', 'סיימו']].map(function (o) {
+        '<div class="seg" role="group" aria-label="סינון">' + FILTER_LIST.map(function (o) {
           return '<button class="' + (st.f === o[0] ? 'on' : '') + '" data-act="filter" data-v="' + o[0] + '">' + o[1] + '</button>';
         }).join('') + '</div></section>' +
       '<section class="card" id="list">' + listHTML() + '</section>';
@@ -164,7 +164,7 @@
     if (facts.length) h += '<dl class="facts">' + facts.map(function (f) { return '<div><dt>' + f[0] + '</dt><dd>' + esc(f[1]) + '</dd></div>'; }).join('') + '</dl>';
     var give = GIVE.indexOf(s) >= 0;
     h += '<div id="form"><div class="fld"><span>לא נוצר קשר</span><div class="os">' + oBtn('na', s) + oBtn('wrong', s) + '</div></div>' +
-      '<div class="fld"><span>תוצאת השיחה</span><div class="os">' + ['yes', 'pl', 'int', 'cb', 'no', 'rmv'].map(function (k) { return oBtn(k, s); }).join('') + '</div></div>' +
+      '<div class="fld"><span>תוצאת השיחה</span><div class="os">' + ORDER.slice(2).map(function (k) { return oBtn(k, s); }).join('') + '</div></div>' +
       '<div id="give-box"' + (give ? '' : ' hidden') + '><label class="fld"><span>סכום</span><input class="inp" id="amt" inputmode="decimal" value="' + esc(cur && cur.amount != null ? cur.amount : '') + '"></label>' +
         '<div class="fld"><span>אמצעי</span><div class="os" role="radiogroup" aria-label="אמצעי">' + st.methods.map(function (m) {
           var on = !!cur && cur.method === m;

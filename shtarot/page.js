@@ -6,10 +6,11 @@
   var GATE = 'https://zrftjkghhjhqzopvdzou.supabase.co/functions/v1/g-gate';
   var RETRY_MS = 2 * 60 * 60 * 1000, BEAT_MS = 60 * 1000, POLL_MS = 30 * 1000, PAGE = 60;
   var STATUS = {
-    na: { l: 'לא ענה', cls: '' }, wrong: { l: 'מספר שגוי', cls: '' }, yes: { l: 'תרם / התחייב', cls: 'ok' },
+    na: { l: 'לא ענה', cls: '' }, wrong: { l: 'מספר שגוי', cls: '' }, yes: { l: 'תרם', cls: 'ok' }, pl: { l: 'התחייב', cls: 'gold' },
     int: { l: 'מעוניין — לשלוח פרטים', cls: 'brand' }, cb: { l: 'לחזור אליו', cls: 'warn' },
     no: { l: 'לא מעוניין', cls: '' }, rmv: { l: 'להסיר מהרשימה', cls: 'bad' }
   };
+  var GIVE = ['yes', 'pl'];
   var NO_NAME = 'שם לא ידוע';
   var ICONS = {
     call: '<path d="M6.2 3.8h3l1.5 4-2 1.5a12 12 0 0 0 6 6l1.5-2 4 1.5v3a1.6 1.6 0 0 1-1.7 1.6A16.2 16.2 0 0 1 4.6 5.5 1.6 1.6 0 0 1 6.2 3.8z"/>',
@@ -78,9 +79,9 @@
     na: function (s) { return s.k === 'na'; },
     done: function (s) { return s.k === 'done'; },
     mine: function (s, p) { return callsOf(p.client_id).some(function (c) { return c.ambassador === st.amb && isToday(c.call_at); }); },
-    gave: function (s, p) { return callsOf(p.client_id).some(function (c) { return c.ambassador === st.amb && c.status === 'yes' && isToday(c.call_at); }); }
+    gave: function (s, p) { return callsOf(p.client_id).some(function (c) { return c.ambassador === st.amb && GIVE.indexOf(c.status) >= 0 && isToday(c.call_at); }); }
   };
-  var TITLES = { queue: 'התור', cb: 'לחזור', 'new': 'טרם התקשרו', na: 'לא ענו', done: 'סיימו', mine: 'השיחות שלי היום', gave: 'תרמו אצלי היום' };
+  var TITLES = { queue: 'התור', cb: 'לחזור', 'new': 'טרם התקשרו', na: 'לא ענו', done: 'סיימו', mine: 'השיחות שלי היום', gave: 'התרומות שלי היום' };
   function matches() {
     var q = st.q.trim().toLowerCase(), qd = digits(q), f = FILTERS[st.f] || FILTERS.queue, rows = [];
     st.people.forEach(function (p) {
@@ -104,9 +105,9 @@
     var n = { queue: 0, cb: 0 };
     st.people.forEach(function (p) { var s = pState(p); if (s.k !== 'done') n.queue++; if (s.k === 'cb') n.cb++; });
     var mine = st.calls.filter(function (c) { return c.ambassador === st.amb && isToday(c.call_at); });
-    var gave = mine.filter(function (c) { return c.status === 'yes'; });
+    var gave = mine.filter(function (c) { return GIVE.indexOf(c.status) >= 0; });
     var total = gave.reduce(function (a, c) { return a + (Number(c.amount) || 0); }, 0);
-    return [['queue', 'בתור', n.queue], ['cb', 'לחזור', n.cb], ['mine', 'שיחות היום', mine.length], ['gave', 'תרמו היום', gave.length, total ? ils(total) : '']].map(function (t) {
+    return [['queue', 'בתור', n.queue], ['cb', 'לחזור', n.cb], ['mine', 'שיחות היום', mine.length], ['gave', 'תרומות היום', gave.length, total ? ils(total) : '']].map(function (t) {
       return '<button class="k' + (st.f === t[0] ? ' on' : '') + '" data-act="filter" data-v="' + t[0] + '"><span>' + t[1] + '</span><b>' + t[2] + '</b>' + (t[3] ? '<small>' + t[3] + '</small>' : '') + '</button>';
     }).join('');
   }
@@ -163,8 +164,8 @@
         '<button class="ib" data-act="close" aria-label="סגירה">' + icon('close') + '</button></div></div><div class="body">';
     if (facts.length) h += '<dl class="facts">' + facts.map(function (f) { return '<div><dt>' + f[0] + '</dt><dd>' + esc(f[1]) + '</dd></div>'; }).join('') + '</dl>';
     h += '<div class="fld"><span>לא נוצר קשר</span><div class="os">' + oBtn('na', s) + oBtn('wrong', s) + '</div></div>' +
-      '<div class="fld"><span>תוצאת השיחה</span><div class="os">' + ['yes', 'int', 'cb', 'no', 'rmv'].map(function (k) { return oBtn(k, s); }).join('') + '</div></div>';
-    if (s === 'yes') {
+      '<div class="fld"><span>תוצאת השיחה</span><div class="os">' + ['yes', 'pl', 'int', 'cb', 'no', 'rmv'].map(function (k) { return oBtn(k, s); }).join('') + '</div></div>';
+    if (GIVE.indexOf(s) >= 0) {
       h += '<label class="fld"><span>סכום</span><input class="inp" id="amt" data-fld inputmode="decimal" value="' + esc(cur.amount == null ? '' : cur.amount) + '"></label>' +
         '<div class="fld"><span>אמצעי</span><div class="os" role="radiogroup" aria-label="אמצעי">' + st.methods.map(function (m) {
           return '<button type="button" class="o' + (cur.method === m ? ' on' : '') + '" role="radio" aria-checked="' + (cur.method === m) + '" data-act="method" data-v="' + esc(m) + '">' + esc(m) + '</button>';
@@ -224,8 +225,9 @@
   // ── השיחה ──
   function fields(s) {
     var a = $('#amt'), w = $('#when'), n = $('#note'), on = $('.o.on[data-act="method"]');
-    return { amount: s === 'yes' && a && a.value.trim() !== '' ? Number(a.value.replace(/[^\d.]/g, '')) : null,
-             method: s === 'yes' && on ? on.dataset.v : null,
+    var give = GIVE.indexOf(s) >= 0;
+    return { amount: give && a && a.value.trim() !== '' ? Number(a.value.replace(/[^\d.]/g, '')) : null,
+             method: give && on ? on.dataset.v : null,
              callback_at: s === 'cb' && w && w.value ? new Date(w.value).toISOString() : null,
              note: n && n.value.trim() ? n.value.trim() : null };
   }

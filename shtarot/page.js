@@ -131,12 +131,26 @@
     if (list.length > st.lim) h += '<div class="more"><button class="btn ghost" data-act="more">הצג עוד · ' + (list.length - st.lim) + '</button></div>';
     return h;
   }
+  // «לפי תוצאה» — בורר אחד לשמונה התוצאות, בסדר התפריט שבשיחה, וליד כל אחת — כמה שזו תוצאת השיחה האחרונה שלהם.
+  function resHTML() {
+    var n = {};
+    st.people.forEach(function (p) { var s = pState(p); if (s.last) n[s.last.status] = (n[s.last.status] || 0) + 1; });
+    return '<select class="inp' + (STATUS[st.f] ? ' on' : '') + '" id="res" aria-label="סינון לפי תוצאה">' +
+      '<option value="">לפי תוצאה</option>' + FILTER_LIST.slice(2).map(function (o) {
+        return '<option value="' + o[0] + '"' + (st.f === o[0] ? ' selected' : '') + '>' + esc(o[1]) + ' · ' + (n[o[0]] || 0) + '</option>';
+      }).join('') + '</select>';
+  }
+  function toolsSync() {
+    document.querySelectorAll('.seg button').forEach(function (b) { b.classList.toggle('on', b.dataset.v === st.f); });
+    var r = $('#res');
+    if (r && document.activeElement !== r) r.outerHTML = resHTML();
+  }
   function viewHTML() {
     return '<section class="dash" id="dash">' + dashHTML() + '</section>' +
       '<section class="card"><input class="inp search" id="q" aria-label="חיפוש לפי שם או טלפון" placeholder="חיפוש לפי שם או טלפון" value="' + esc(st.q) + '">' +
-        '<div class="seg" role="group" aria-label="סינון">' + FILTER_LIST.map(function (o) {
+        '<div class="tools"><div class="seg" role="group" aria-label="סינון">' + FILTER_LIST.slice(0, 2).map(function (o) {
           return '<button class="' + (st.f === o[0] ? 'on' : '') + '" data-act="filter" data-v="' + o[0] + '">' + o[1] + '</button>';
-        }).join('') + '</div></section>' +
+        }).join('') + '</div>' + resHTML() + '</div></section>' +
       '<section class="card" id="list">' + listHTML() + '</section>';
   }
   function refresh() {
@@ -144,7 +158,7 @@
     var d = $('#dash'), l = $('#list');
     if (!d || !l) { $('#view').innerHTML = viewHTML(); return; }
     d.innerHTML = dashHTML(); l.innerHTML = listHTML();
-    document.querySelectorAll('.seg button').forEach(function (b) { b.classList.toggle('on', b.dataset.v === st.f); });
+    toolsSync();
   }
 
   // ── חלון האיש ──
@@ -273,6 +287,7 @@
       var d = $('#dash'), l = $('#list');
       if (d) d.innerHTML = dashHTML();
       if (l) l.innerHTML = listHTML();
+      toolsSync();
       toast('השיחה נשמרה');
       return true;
     }, function () { toast('אין חיבור — השיחה לא נשמרה', true); return false; });
@@ -310,6 +325,7 @@
     var d = $('#dash'), l = $('#list');
     if (d) d.innerHTML = dashHTML();
     if (l) l.innerHTML = listHTML();
+      toolsSync();
   }
   function busy(el, on) { if (el) el.disabled = on; }
 
@@ -473,11 +489,13 @@
     else if (a === 'd-clear') donorPick('');
   });
   document.addEventListener('change', function (e) {
+    if (e.target.id === 'res') { st.f = e.target.value || 'queue'; st.lim = PAGE; refresh(); return; }
     if (e.target.id === 'c-status') { var v = e.target.value; $('#c-give').hidden = GIVE.indexOf(v) < 0; $('#c-when-box').hidden = v !== 'cb'; }
   });
   document.addEventListener('input', function (e) {
     if (e.target.id === 'd-q') { var dl = $('#d-list'); if (dl) dl.innerHTML = donorListHTML(e.target.value); return; }
-    if (e.target.id === 'q') { st.q = e.target.value; st.lim = PAGE; var l = $('#list'); if (l) l.innerHTML = listHTML(); }
+    if (e.target.id === 'q') { st.q = e.target.value; st.lim = PAGE; var l = $('#list'); if (l) l.innerHTML = listHTML();
+      toolsSync(); }
   });
   document.addEventListener('keydown', function (e) { if (e.key !== 'Escape') return; if ($('.mdl')) { mdlClose(); return; } if (st.open && !$('.ask')) leave(close); });
   window.addEventListener('pagehide', function () { if (st.open) release(st.open, true); });
@@ -507,6 +525,7 @@
         var d = $('#dash'), l = $('#list');
         if (d) d.innerHTML = dashHTML();
         if (l) l.innerHTML = listHTML();
+      toolsSync();
       }).catch(function () { });
     }, POLL_MS);
   }, function () { fail('הטעינה נכשלה', 'נא לבדוק את החיבור לאינטרנט.', true); });

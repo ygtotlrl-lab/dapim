@@ -15,7 +15,7 @@
   var ICONS = {
     call: '<path d="M6.2 3.8h3l1.5 4-2 1.5a12 12 0 0 0 6 6l1.5-2 4 1.5v3a1.6 1.6 0 0 1-1.7 1.6A16.2 16.2 0 0 1 4.6 5.5 1.6 1.6 0 0 1 6.2 3.8z"/>',
     chat: '<path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v7a2.5 2.5 0 0 1-2.5 2.5H11l-4.5 3.8V16A2.5 2.5 0 0 1 4 13.5z"/>',
-    close: '<path d="M6 6l12 12M18 6L6 18"/>', prev: '<path d="M9 6l6 6-6 6"/>', next: '<path d="M15 6l-6 6 6 6"/>'
+    close: '<path d="M6 6l12 12M18 6L6 18"/>', edit: '<path d="M14.5 5.5l4 4L9 19H5v-4z"/><path d="M12.5 7.5l4 4"/>', prev: '<path d="M9 6l6 6-6 6"/>', next: '<path d="M15 6l-6 6 6 6"/>'
   };
   function icon(n) { return '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true">' + ICONS[n] + '</svg>'; }
 
@@ -26,7 +26,7 @@
     if (!v) { v = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random()); try { sessionStorage.setItem(k, v); } catch (e) { } }
     return 'page-' + v;
   })();
-  var st = { amb: '', people: [], calls: [], methods: [], q: '', f: 'queue', lim: PAGE, open: null, call: null, nav: [], busy: false };
+  var st = { amb: '', people: [], calls: [], methods: [], ambs: [], donors: [], q: '', f: 'queue', lim: PAGE, open: null, call: null, nav: [], busy: false };
   var ix = null, beat = 0;
 
   function $(s, r) { return (r || document).querySelector(s); }
@@ -160,6 +160,7 @@
       '<div class="who"><h3>' + esc(p.name || NO_NAME) + '</h3><span dir="ltr">' + esc(phoneShow(p.phone)) + '</span></div>' +
       '<div class="acts"><a class="ib" href="tel:' + esc(p.phone) + '" aria-label="חיוג" title="חיוג">' + icon('call') + '</a>' +
         '<a class="ib" href="' + esc(waLink(p.phone)) + '" target="_blank" rel="noopener noreferrer" aria-label="וואטסאפ" title="וואטסאפ">' + icon('chat') + '</a>' +
+        '<button class="ib" data-act="p-edit" aria-label="עריכת הפרטים" title="עריכת הפרטים">' + icon('edit') + '</button>' +
         '<button class="ib" data-act="close" aria-label="סגירה">' + icon('close') + '</button></div></div><div class="body">';
     if (facts.length) h += '<dl class="facts">' + facts.map(function (f) { return '<div><dt>' + f[0] + '</dt><dd>' + esc(f[1]) + '</dd></div>'; }).join('') + '</dl>';
     var give = GIVE.indexOf(s) >= 0;
@@ -176,7 +177,7 @@
     if (hist.length) {
       h += '<div class="sec">שיחות קודמות<span class="cnt">' + hist.length + '</span></div><div class="hist">' + hist.map(function (c) {
         var d = STATUS[c.status] || { l: c.status, cls: '' };
-        return '<div class="h"><div><span class="badge ' + d.cls + '">' + esc(d.l) + '</span> <small>' + esc(whenShow(Date.parse(c.call_at))) + ' · ' + esc(c.ambassador) + '</small></div>' +
+        return '<div class="h"><button class="ib h-edit" data-act="c-edit" data-id="' + esc(c.client_id) + '" aria-label="עריכת השיחה" title="עריכת השיחה">' + icon('edit') + '</button><div><span class="badge ' + d.cls + '">' + esc(d.l) + '</span> <small>' + esc(whenShow(Date.parse(c.call_at))) + ' · ' + esc(c.ambassador) + '</small></div>' +
           ((c.amount != null || c.method) ? '<div><b>' + (c.amount != null ? ils(c.amount) : '') + '</b> ' + esc(c.method || '') + '</div>' : '') +
           (c.status === 'cb' && c.callback_at ? '<div><small>לחזור ב-' + esc(whenShow(Date.parse(c.callback_at))) + '</small></div>' : '') +
           (c.note ? '<div class="hn">' + esc(c.note) + '</div>' : '') + '</div>';
@@ -277,6 +278,167 @@
     }, function () { toast('אין חיבור — השיחה לא נשמרה', true); return false; });
   }
 
+  // ── העריכה — כמו באפליקציה: פרטי האיש ומחיקתו, וכל שיחה קודמת ומחיקתה. ──
+  function mdl(title, body, foot) {
+    mdlClose();
+    var box = document.createElement('div');
+    box.className = 'mdl';
+    box.innerHTML = '<div class="ask-bg" data-act="m-close"></div><div class="mdl-in" role="dialog" aria-modal="true" aria-label="' + esc(title) + '">' +
+      '<div class="mdl-hd"><h3>' + esc(title) + '</h3><button class="ib ghost" data-act="m-close" aria-label="סגירה">' + icon('close') + '</button></div>' +
+      '<div class="mdl-body">' + body + '</div><div class="mdl-ft">' + foot + '</div></div>';
+    document.body.appendChild(box);
+  }
+  function mdlClose() { var m = $('.mdl'); if (m) m.remove(); }
+  function sure(title, text, ok) {
+    return new Promise(function (res) {
+      var box = document.createElement('div');
+      box.className = 'ask';
+      box.innerHTML = '<div class="ask-bg" data-ask="no"></div><div class="ask-in" role="alertdialog" aria-modal="true" aria-label="' + esc(title) + '">' +
+        '<h3>' + esc(title) + '</h3><p>' + esc(text) + '</p>' +
+        '<div class="ask-btns"><button class="btn ghost" data-ask="no">ביטול</button><button class="btn danger" data-ask="yes">' + esc(ok) + '</button></div></div>';
+      document.body.appendChild(box);
+      box.addEventListener('click', function (e) {
+        var b = e.target.closest('[data-ask]'); if (!b) return;
+        box.remove(); res(b.dataset.ask === 'yes');
+      });
+    });
+  }
+  function nul(v) { v = String(v == null ? '' : v).trim(); return v || null; }
+  function donorById(id) { for (var i = 0; i < st.donors.length; i++) if (st.donors[i].client_id === id) return st.donors[i]; return null; }
+  function afterChange() {
+    ix = null; winDraw();
+    var d = $('#dash'), l = $('#list');
+    if (d) d.innerHTML = dashHTML();
+    if (l) l.innerHTML = listHTML();
+  }
+  function busy(el, on) { if (el) el.disabled = on; }
+
+  // פרטי האיש — כרטיס בגיוס (חיפוש לפי שם או טלפון; השם ממנו), או שם; טלפון חובה; הערה.
+  function donorListHTML(q) {
+    q = String(q || '').trim().toLowerCase();
+    if (!q) return '';
+    var qd = digits(q), hit = st.donors.filter(function (d) {
+      return String(d.name || '').toLowerCase().indexOf(q) >= 0 || (qd && digits(d.phone).indexOf(qd) >= 0);
+    }).sort(function (a, b) { return String(a.name).localeCompare(String(b.name), 'he'); }).slice(0, 30);
+    if (!hit.length) return '<div class="d-none">לא נמצא כרטיס</div>';
+    return hit.map(function (d) {
+      return '<button type="button" class="d-it" data-act="d-pick" data-id="' + esc(d.client_id) + '"><b>' + esc(d.name) + '</b>' +
+        (d.phone ? '<small dir="ltr">' + esc(phoneShow(d.phone)) + '</small>' : '') + '</button>';
+    }).join('');
+  }
+  function donorBoxHTML(d) {
+    return d ? '<div class="d-on"><b>' + esc(d.name) + '</b><button type="button" class="ib ghost" data-act="d-clear" aria-label="ביטול הבחירה">' + icon('close') + '</button></div>'
+             : '<input class="inp" id="d-q" placeholder="חיפוש כרטיס — או שם וטלפון למטה" autocomplete="off"><div id="d-list" class="d-list"></div>';
+  }
+  function donorPick(id) {
+    var d = id ? donorById(id) : null, box = $('#d-box'), nm = $('#p-name'), ph = $('#p-phone');
+    $('#p-donor').value = d ? d.client_id : '';
+    box.innerHTML = donorBoxHTML(d);
+    if (nm) { nm.value = d ? d.name : ''; nm.disabled = !!d; }
+    if (ph && d && d.phone && !ph.value.trim()) ph.value = d.phone;
+    if (!d) { var q = $('#d-q'); if (q) q.focus(); }
+  }
+  function formPerson(p) {
+    var d = p.donor_client_id ? donorById(p.donor_client_id) : null;
+    mdl('עריכת הפרטים',
+      '<div class="fld"><span>כרטיס בגיוס</span><input type="hidden" id="p-donor" value="' + esc(d ? d.client_id : '') + '"><div id="d-box">' + donorBoxHTML(d) + '</div></div>' +
+      '<div class="f2"><label class="fld"><span>שם</span><input class="inp" id="p-name" value="' + esc(p.name || '') + '"' + (d ? ' disabled' : '') + '></label>' +
+      '<label class="fld"><span>טלפון *</span><input class="inp" id="p-phone" inputmode="tel" dir="ltr" value="' + esc(p.phone || '') + '"></label></div>' +
+      '<label class="fld"><span>הערה</span><input class="inp" id="p-note" value="' + esc(p.note || '') + '"></label>',
+      '<button class="btn ghost" data-act="m-close">ביטול</button><button class="btn danger" data-act="p-del">מחיקה</button>' +
+      '<button class="btn" data-act="p-save">שמירה</button>');
+  }
+  // כפילות — אותו טלפון או אותו שם; אזהרה, והשמירה ממשיכה רק באישור.
+  function dupOf(id, name, phone) {
+    var pd = digits(phone), nm = String(name || '').trim();
+    for (var i = 0; i < st.people.length; i++) {
+      var o = st.people[i];
+      if (o.client_id === id) continue;
+      if ((pd && digits(o.phone) === pd) || (nm && (o.name || '') === nm)) return o;
+    }
+    return null;
+  }
+  function savePerson() {
+    var p = personById(st.open); if (!p) return;
+    var donor = $('#p-donor').value || null, phone = $('#p-phone').value.replace(/[\s-]/g, ''), name = donor ? '' : $('#p-name').value;
+    if (!digits(phone)) { toast('נא למלא טלפון', true); return; }
+    var dup = dupOf(p.client_id, donor ? donorById(donor).name : name, phone);
+    var go = function () {
+      var btn = $('[data-act="p-save"]'); busy(btn, true);
+      return gate({ a: 'person', id: p.client_id, donor: donor, name: nul(name), phone: phone, note: nul($('#p-note').value), dev: dev }).then(function (r) {
+        busy(btn, false);
+        if (!r.ok || !r.person) { toast(r.why === 'phone' ? 'נא למלא טלפון' : 'השמירה נכשלה — נסו שוב', true); return; }
+        var i = st.people.findIndex(function (x) { return x.client_id === p.client_id; });
+        if (i >= 0) st.people[i] = r.person;
+        mdlClose(); afterChange(); toast('נשמר');
+      }, function () { busy(btn, false); toast('אין חיבור — לא נשמר', true); });
+    };
+    if (!dup) return go();
+    sure('כפילות', 'כבר ברשימה: ' + (dup.name || NO_NAME) + ' · ' + phoneShow(dup.phone) + '. לשמור בכל זאת?', 'שמירה').then(function (y) { if (y) go(); });
+  }
+  function delPerson() {
+    var p = personById(st.open); if (!p) return;
+    sure('מחיקה', 'למחוק את האיש מרשימת השטרות? השיחות שלו יימחקו איתו. המחיקה רכה וניתנת לשחזור במסד.', 'מחיקה').then(function (y) {
+      if (!y) return;
+      gate({ a: 'person_del', id: p.client_id, dev: dev }).then(function (r) {
+        if (!r.ok) { toast('המחיקה נכשלה — נסו שוב', true); return; }
+        st.people = st.people.filter(function (x) { return x.client_id !== p.client_id; });
+        st.calls = st.calls.filter(function (x) { return x.person_client_id !== p.client_id; });
+        mdlClose(); st.open = null; st.call = null; snap = ''; beatSet(); ix = null; winDraw(); refresh(); toast('נמחק');
+      }, function () { toast('אין חיבור — לא נמחק', true); });
+    });
+  }
+
+  // שיחה קודמת — תוצאה · שגריר, ולפי התוצאה סכום ואמצעי או מועד לחזור, סיכום; ומחיקה.
+  function formCall(c) {
+    var give = GIVE.indexOf(c.status) >= 0, ambs = st.ambs.slice();
+    if (ambs.indexOf(c.ambassador) < 0) ambs.push(c.ambassador);
+    mdl('עריכת שיחה',
+      '<div class="f2"><label class="fld"><span>תוצאה *</span><select class="inp" id="c-status">' + Object.keys(STATUS).map(function (k) {
+          return '<option value="' + k + '"' + (c.status === k ? ' selected' : '') + '>' + esc(STATUS[k].l) + '</option>'; }).join('') + '</select></label>' +
+        '<label class="fld"><span>שגריר מטלפן *</span><select class="inp" id="c-amb">' + ambs.map(function (a) {
+          return '<option' + (c.ambassador === a ? ' selected' : '') + '>' + esc(a) + '</option>'; }).join('') + '</select></label></div>' +
+      '<div id="c-give"' + (give ? '' : ' hidden') + '><label class="fld"><span>סכום</span><input class="inp" id="c-amt" inputmode="decimal" value="' + esc(c.amount == null ? '' : c.amount) + '"></label>' +
+        '<div class="fld"><span>אמצעי</span><div class="os" role="radiogroup" aria-label="אמצעי">' + st.methods.map(function (m) {
+          var on = c.method === m;
+          return '<button type="button" class="o' + (on ? ' on' : '') + '" role="radio" aria-checked="' + on + '" data-act="c-method" data-v="' + esc(m) + '">' + esc(m) + '</button>';
+        }).join('') + '</div></div></div>' +
+      '<label class="fld" id="c-when-box"' + (c.status === 'cb' ? '' : ' hidden') + '><span>מתי לחזור</span><input class="inp" type="datetime-local" id="c-when" value="' + esc(localInput(c.callback_at)) + '"></label>' +
+      '<label class="fld"><span>סיכום השיחה</span><textarea class="inp" id="c-note" rows="3">' + esc(c.note || '') + '</textarea></label>',
+      '<button class="btn ghost" data-act="m-close">ביטול</button><button class="btn danger" data-act="c-del" data-id="' + esc(c.client_id) + '">מחיקה</button>' +
+      '<button class="btn" data-act="c-save" data-id="' + esc(c.client_id) + '">שמירה</button>');
+  }
+  function putCall(c) {
+    var i = st.calls.findIndex(function (x) { return x.client_id === c.client_id; });
+    if (i >= 0) st.calls[i] = c; else st.calls.push(c);
+  }
+  function saveCallEdit(id) {
+    var s = $('#c-status').value, give = GIVE.indexOf(s) >= 0, a = $('#c-amt'), w = $('#c-when'), on = $('.o.on[data-act="c-method"]');
+    if (!STATUS[s]) { toast('נא לבחור את תוצאת השיחה', true); return; }
+    var c = { client_id: id, status: s, ambassador: $('#c-amb').value,
+              amount: give && a && a.value.trim() !== '' ? Number(a.value.replace(/[^\d.]/g, '')) : null,
+              method: give && on ? on.dataset.v : null,
+              callback_at: s === 'cb' && w && w.value ? new Date(w.value).toISOString() : null, note: nul($('#c-note').value) };
+    if (c.amount != null && !(c.amount > 0)) { toast('נא להזין סכום גדול מאפס', true); return; }
+    var btn = $('[data-act="c-save"]'); busy(btn, true);
+    gate({ a: 'call_edit', call: c, dev: dev }).then(function (r) {
+      busy(btn, false);
+      if (!r.ok || !r.call) { toast('השמירה נכשלה — נסו שוב', true); return; }
+      putCall(r.call); mdlClose(); afterChange(); toast('השיחה נשמרה');
+    }, function () { busy(btn, false); toast('אין חיבור — השיחה לא נשמרה', true); });
+  }
+  function delCall(id) {
+    sure('מחיקה', 'למחוק את השיחה? המחיקה רכה וניתנת לשחזור במסד.', 'מחיקה').then(function (y) {
+      if (!y) return;
+      gate({ a: 'call_del', id: id, dev: dev }).then(function (r) {
+        if (!r.ok) { toast('המחיקה נכשלה — נסו שוב', true); return; }
+        st.calls = st.calls.filter(function (x) { return x.client_id !== id; });
+        if (st.call === id) st.call = null;
+        mdlClose(); afterChange(); toast('נמחק');
+      }, function () { toast('אין חיבור — לא נמחק', true); });
+    });
+  }
+
   // ── המאזינים ──
   document.addEventListener('click', function (e) {
     var el = e.target.closest('[data-act]');
@@ -295,11 +457,29 @@
       if (a === 'st') { var v = pickedStatus(); $('#give-box').hidden = GIVE.indexOf(v) < 0; $('#when-box').hidden = v !== 'cb'; }
     }
     else if (a === 'reload') location.reload();
+    else if (a === 'p-edit') { var pe = personById(st.open); if (pe) formPerson(pe); }
+    else if (a === 'c-edit') { var ce = callById(el.dataset.id); if (ce) formCall(ce); }
+    else if (a === 'm-close') mdlClose();
+    else if (a === 'p-save') savePerson();
+    else if (a === 'p-del') delPerson();
+    else if (a === 'c-save') saveCallEdit(el.dataset.id);
+    else if (a === 'c-del') delCall(el.dataset.id);
+    else if (a === 'c-method') {
+      var wasM = el.classList.contains('on');
+      document.querySelectorAll('.o[data-act="c-method"]').forEach(function (x) { x.classList.remove('on'); x.setAttribute('aria-checked', 'false'); });
+      if (!wasM) { el.classList.add('on'); el.setAttribute('aria-checked', 'true'); }
+    }
+    else if (a === 'd-pick') donorPick(el.dataset.id);
+    else if (a === 'd-clear') donorPick('');
+  });
+  document.addEventListener('change', function (e) {
+    if (e.target.id === 'c-status') { var v = e.target.value; $('#c-give').hidden = GIVE.indexOf(v) < 0; $('#c-when-box').hidden = v !== 'cb'; }
   });
   document.addEventListener('input', function (e) {
+    if (e.target.id === 'd-q') { var dl = $('#d-list'); if (dl) dl.innerHTML = donorListHTML(e.target.value); return; }
     if (e.target.id === 'q') { st.q = e.target.value; st.lim = PAGE; var l = $('#list'); if (l) l.innerHTML = listHTML(); }
   });
-  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && st.open && !$('.ask')) leave(close); });
+  document.addEventListener('keydown', function (e) { if (e.key !== 'Escape') return; if ($('.mdl')) { mdlClose(); return; } if (st.open && !$('.ask')) leave(close); });
   window.addEventListener('pagehide', function () { if (st.open) release(st.open, true); });
 
   function fail(title, text, retry) {
@@ -315,7 +495,7 @@
       else fail('הטעינה נכשלה', 'נא לבדוק את החיבור לאינטרנט.', true);
       return;
     }
-    st.amb = r.amb; st.people = r.people; st.calls = r.calls; st.methods = r.methods || [];
+    st.amb = r.amb; st.people = r.people; st.calls = r.calls; st.methods = r.methods || []; st.ambs = r.ambs || []; st.donors = r.donors || [];
     $('#amb').textContent = r.amb;
     $('#view').innerHTML = viewHTML();
     // השיחות מתרעננות ברקע — מה שטלפנים אחרים רשמו נכנס לתור בלי רענון הדף.

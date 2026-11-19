@@ -124,7 +124,7 @@ textarea.inp{resize:vertical;min-height:84px}
 .ask-in p{color:var(--text-2);margin-bottom:16px}
 .ask-btns{display:flex;gap:8px}
 .ask-btns .btn{flex:1}
-.btn.danger{background:var(--bad);color:#fff}
+.btn.danger{background:var(--bad-soft);color:var(--bad)}
 /* שיחה קודמת — אייקון העריכה בקצה השורה. */
 .h{position:relative;padding-inline-end:52px}
 .h-edit{position:absolute;top:6px;inset-inline-end:6px;width:34px;height:34px;background:var(--brand-soft);color:var(--brand-ink)}

@@ -6,16 +6,20 @@
   var GATE = 'https://zrftjkghhjhqzopvdzou.supabase.co/functions/v1/g-gate';
   var RETRY_MS = 2 * 60 * 60 * 1000, BEAT_MS = 60 * 1000, POLL_MS = 30 * 1000, PAGE = 60;
   var STATUS = {
-    na: { l: 'לא ענה', cls: '' }, wrong: { l: 'מספר שגוי', cls: '' }, yes: { l: 'תרם', cls: 'ok' }, pl: { l: 'התחייב', cls: 'gold' },
+    na: { l: 'לא ענה', cls: '' }, wrong: { l: 'מספר שגוי', cls: '' }, cleared: { l: 'נסלק', cls: 'ok' }, yes: { l: 'תרם', cls: 'ok' }, pl: { l: 'התחייב', cls: 'gold' },
     int: { l: 'ממתין לפרטים', cls: 'brand' }, cb: { l: 'לחזור אליו', cls: 'warn' },
     no: { l: 'לא מעוניין', cls: '' }, rmv: { l: 'להסיר מהרשימה', cls: 'bad' }
   };
-  var GIVE = ['yes', 'pl'];
+  var GIVE = ['yes', 'pl', 'cleared'];
+  // «ממתינים לטיפול» — המצב · הכפתור · המצבים הבאים; כמו באפליקציה (SHT_NEXT).
+  var NEXT = [['int', 'טופל', ['pl', 'yes']], ['pl', 'תרם', ['yes']], ['yes', 'נסלק', ['cleared']]];
+  // תפריט התוצאות שבשיחה — בלי «נסלק», שמגיעים אליה רק מ«ממתינים לטיפול».
+  var PICK = ['yes', 'pl', 'int', 'cb', 'no', 'rmv'];
   var NO_NAME = 'שם לא ידוע';
   var ICONS = {
     call: '<path d="M6.2 3.8h3l1.5 4-2 1.5a12 12 0 0 0 6 6l1.5-2 4 1.5v3a1.6 1.6 0 0 1-1.7 1.6A16.2 16.2 0 0 1 4.6 5.5 1.6 1.6 0 0 1 6.2 3.8z"/>',
     chat: '<path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v7a2.5 2.5 0 0 1-2.5 2.5H11l-4.5 3.8V16A2.5 2.5 0 0 1 4 13.5z"/>',
-    close: '<path d="M6 6l12 12M18 6L6 18"/>', edit: '<path d="M14.5 5.5l4 4L9 19H5v-4z"/><path d="M12.5 7.5l4 4"/>', prev: '<path d="M9 6l6 6-6 6"/>', next: '<path d="M15 6l-6 6 6 6"/>'
+    close: '<path d="M6 6l12 12M18 6L6 18"/>', check: '<path d="M5.5 12.5l4.2 4.2L18.5 8"/>', edit: '<path d="M14.5 5.5l4 4L9 19H5v-4z"/><path d="M12.5 7.5l4 4"/>', prev: '<path d="M9 6l6 6-6 6"/>', next: '<path d="M15 6l-6 6 6 6"/>'
   };
   function icon(n) { return '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true">' + ICONS[n] + '</svg>'; }
 
@@ -73,7 +77,7 @@
     return { k: 'done', rank: 9, at: Date.parse(last.call_at), last: last };
   }
   // הסינון — «כל התור», «טרם התקשרו», וכפתור לכל תוצאה, בשמה ובסדרה כמו בתפריט התוצאות שבשיחה; כמו באפליקציה.
-  var ORDER = ['na', 'wrong', 'yes', 'pl', 'int', 'cb', 'no', 'rmv'];
+  var ORDER = ['na', 'wrong', 'cleared', 'yes', 'pl', 'int', 'cb', 'no', 'rmv'];
   var FILTERS = { queue: function (s) { return s.k !== 'done'; }, 'new': function (s) { return s.k === 'new'; } };
   var FILTER_LIST = [['queue', 'כל התור'], ['new', 'טרם התקשרו']], TITLES = { queue: 'התור', 'new': 'טרם התקשרו' };
   ORDER.forEach(function (k) {
@@ -98,15 +102,81 @@
     });
   }
 
+  // התרומות שלי היום — כמו באפליקציה: השינוי מתחילת היום, לכל איש שהשיחה האחרונה שלו היום היא שלי;
+  // נכנס לתרומה (התחייב · תרם · נסלק) — נספר, יצא ממנה — יורד, והסכום — ההפרש מהשיחה שלפני היום.
+  function giveToday() {
+    var t0 = new Date(); t0.setHours(0, 0, 0, 0); t0 = +t0;
+    var n = 0, s = 0, g = function (c) { return !!c && GIVE.indexOf(c.status) >= 0; }, a = function (c) { return g(c) ? (Number(c.amount) || 0) : 0; };
+    st.people.forEach(function (p) {
+      var cs = callsOf(p.client_id), last = cs[cs.length - 1], before = null;
+      if (!last || Date.parse(last.call_at) < t0 || last.ambassador !== st.amb) return;
+      for (var i = cs.length - 1; i >= 0; i--) if (Date.parse(cs[i].call_at) < t0) { before = cs[i]; break; }
+      n += (g(last) ? 1 : 0) - (g(before) ? 1 : 0);
+      s += a(last) - a(before);
+    });
+    return { n: n, sum: s };
+  }
+
+  // ── ממתינים לטיפול ──
+  // כמו באפליקציה: חלק לכל מצב שממתין לפעולה, כל השיחות של כל השגרירים; הכפתור מעביר למצב הבא —
+  // שיחה חדשה ביום הלחיצה, בשגריר של הקישור, והקודמת מסומנת «טופל» ויוצאת מהרכיב.
+  function nextOf(c) { for (var i = 0; i < NEXT.length; i++) if (NEXT[i][0] === c.status) return NEXT[i]; return null; }
+  function waitHTML() {
+    var h = '', total = 0;
+    NEXT.forEach(function (part) {
+      var list = st.calls.filter(function (c) { return c.status === part[0] && !c.handled && personById(c.person_client_id); })
+        .sort(function (a, b) { return Date.parse(b.call_at) - Date.parse(a.call_at); });
+      if (!list.length) return;
+      total += list.length;
+      var give = GIVE.indexOf(part[0]) >= 0, day = '';
+      h += '<div class="w-sub">' + esc(STATUS[part[0]].l) + ' <span class="cnt">' + list.length + '</span></div>' + list.map(function (c) {
+        var p = personById(c.person_client_id), d = whenShow(Date.parse(c.call_at)).slice(0, 5), hd = d !== day ? '<div class="w-day">' + d + '</div>' : '';
+        day = d;
+        return hd + '<div class="w-row"><button class="w-main" data-act="open" data-id="' + esc(p.client_id) + '">' +
+          (give ? '<b class="w-amt">' + (c.amount != null ? ils(c.amount) : '—') + '</b>' : '') +
+          '<span class="w-who"><b>' + esc(p.name || NO_NAME) + '</b><small>' + esc([c.ambassador, c.note].filter(Boolean).join(' · ')) + '</small></span>' +
+          (give && c.method ? '<small class="w-m">' + esc(c.method) + '</small>' : '') + '</button>' +
+          '<button class="btn sm" data-act="next" data-id="' + esc(c.client_id) + '">' + icon('check') + part[1] + '</button></div>';
+      }).join('');
+    });
+    return h ? '<section class="card wait"><h2>ממתינים לטיפול<span class="cnt">' + total + '</span></h2>' + h + '</section>' : '';
+  }
+  function formNext(c) {
+    var nx = nextOf(c), p = personById(c.person_client_id);
+    if (!nx || !p) return;
+    var to = nx[2], one = to.length === 1;
+    mdl((p.name || NO_NAME) + ' · ' + nx[1],
+      '<div class="fld"><span>המצב הבא</span><div class="os">' + to.map(function (k) {
+        return '<button type="button" class="o ' + STATUS[k].cls + (one ? ' on' : '') + '" aria-pressed="' + one + '" data-act="n-to" data-v="' + k + '">' + esc(STATUS[k].l) + '</button>';
+      }).join('') + '</div></div>' +
+      '<label class="fld"><span>סכום</span><input class="inp" id="n-amt" inputmode="decimal" value="' + esc(c.amount == null ? '' : c.amount) + '"></label>' +
+      '<div class="fld"><span>אמצעי</span><div class="os" role="radiogroup" aria-label="אמצעי">' + st.methods.map(function (m) {
+        var on = c.method === m;
+        return '<button type="button" class="o' + (on ? ' on' : '') + '" role="radio" aria-checked="' + on + '" data-act="n-method" data-v="' + esc(m) + '">' + esc(m) + '</button>';
+      }).join('') + '</div></div>',
+      '<button class="btn ghost" data-act="m-close">ביטול</button><button class="btn" data-act="n-save" data-id="' + esc(c.client_id) + '">' + icon('check') + 'העברה</button>');
+  }
+  function saveNext(id) {
+    var to = $('.o.on[data-act="n-to"]'), a = $('#n-amt'), m = $('.o.on[data-act="n-method"]');
+    if (!to) { toast('נא לבחור את המצב הבא', true); return; }
+    var amount = a && a.value.trim() !== '' ? Number(a.value.replace(/[^\d.]/g, '')) : null;
+    if (amount != null && !(amount > 0)) { toast('נא להזין סכום גדול מאפס', true); return; }
+    var btn = $('[data-act="n-save"]'); busy(btn, true);
+    gate({ a: 'next', from: id, to: to.dataset.v, amount: amount, method: m ? m.dataset.v : null, dev: dev,
+           id: crypto.randomUUID ? crypto.randomUUID() : 'pg-' + Date.now() + '-' + Math.random().toString(36).slice(2) }).then(function (r) {
+      busy(btn, false);
+      if (!r.ok || !r.calls) { toast(r.why === 'state' ? 'המצב כבר השתנה — הרשימה תתרענן' : 'ההעברה נכשלה — נסו שוב', true); return; }
+      r.calls.forEach(putCall); mdlClose(); afterChange(); toast('הועבר');
+    }, function () { busy(btn, false); toast('אין חיבור — לא הועבר', true); });
+  }
+
   // ── המסך ──
   // הלוח — נתונים בלבד, לא סינון: כמה בתור, והשיחות והתרומות של השגריר היום.
   function dashHTML() {
     var queue = 0;
     st.people.forEach(function (p) { if (pState(p).k !== 'done') queue++; });
-    var mine = st.calls.filter(function (c) { return c.ambassador === st.amb && isToday(c.call_at); });
-    var gave = mine.filter(function (c) { return GIVE.indexOf(c.status) >= 0; });
-    var total = gave.reduce(function (a, c) { return a + (Number(c.amount) || 0); }, 0);
-    return [['בתור', queue], ['השיחות שלי היום', mine.length], ['התרומות שלי היום', gave.length], ['הסכום שלי היום', ils(total), 'ok']].map(function (t) {
+    var mine = st.calls.filter(function (c) { return c.ambassador === st.amb && isToday(c.call_at); }), g = giveToday();
+    return [['בתור', queue], ['השיחות שלי היום', mine.length], ['התרומות שלי היום', g.n], ['הסכום שלי היום', ils(g.sum), 'ok']].map(function (t) {
       return '<div class="k' + (t[2] ? ' ' + t[2] : '') + '"><span>' + t[0] + '</span><b>' + t[1] + '</b></div>';
     }).join('');
   }
@@ -141,12 +211,13 @@
       }).join('') + '</select>';
   }
   function toolsSync() {
+    var w = $('#wait'); if (w) w.innerHTML = waitHTML();
     document.querySelectorAll('.seg button').forEach(function (b) { b.classList.toggle('on', b.dataset.v === st.f); });
     var r = $('#res');
     if (r && document.activeElement !== r) r.outerHTML = resHTML();
   }
   function viewHTML() {
-    return '<section class="dash" id="dash">' + dashHTML() + '</section>' +
+    return '<section class="dash" id="dash">' + dashHTML() + '</section><div id="wait">' + waitHTML() + '</div>' +
       '<section class="card"><input class="inp search" id="q" aria-label="חיפוש לפי שם או טלפון" placeholder="חיפוש לפי שם או טלפון" value="' + esc(st.q) + '">' +
         '<div class="tools"><div class="seg" role="group" aria-label="סינון">' + FILTER_LIST.slice(0, 2).map(function (o) {
           return '<button class="' + (st.f === o[0] ? 'on' : '') + '" data-act="filter" data-v="' + o[0] + '">' + o[1] + '</button>';
@@ -179,7 +250,7 @@
     if (facts.length) h += '<dl class="facts">' + facts.map(function (f) { return '<div><dt>' + f[0] + '</dt><dd>' + esc(f[1]) + '</dd></div>'; }).join('') + '</dl>';
     var give = GIVE.indexOf(s) >= 0;
     h += '<div id="form"><div class="fld"><span>לא נוצר קשר</span><div class="os">' + oBtn('na', s) + oBtn('wrong', s) + '</div></div>' +
-      '<div class="fld"><span>תוצאת השיחה</span><div class="os">' + ORDER.slice(2).map(function (k) { return oBtn(k, s); }).join('') + '</div></div>' +
+      '<div class="fld"><span>תוצאת השיחה</span><div class="os">' + PICK.map(function (k) { return oBtn(k, s); }).join('') + '</div></div>' +
       '<div id="give-box"' + (give ? '' : ' hidden') + '><label class="fld"><span>סכום</span><input class="inp" id="amt" inputmode="decimal" value="' + esc(cur && cur.amount != null ? cur.amount : '') + '"></label>' +
         '<div class="fld"><span>אמצעי</span><div class="os" role="radiogroup" aria-label="אמצעי">' + st.methods.map(function (m) {
           var on = !!cur && cur.method === m;
@@ -486,6 +557,13 @@
       if (!wasM) { el.classList.add('on'); el.setAttribute('aria-checked', 'true'); }
     }
     else if (a === 'd-pick') donorPick(el.dataset.id);
+    else if (a === 'next') { var nc = callById(el.dataset.id); if (nc) formNext(nc); }
+    else if (a === 'n-save') saveNext(el.dataset.id);
+    else if (a === 'n-to' || a === 'n-method') {
+      var wasN = el.classList.contains('on'), attr = a === 'n-to' ? 'aria-pressed' : 'aria-checked';
+      document.querySelectorAll('.o[data-act="' + a + '"]').forEach(function (x) { x.classList.remove('on'); x.setAttribute(attr, 'false'); });
+      if (!wasN || a === 'n-to') { el.classList.add('on'); el.setAttribute(attr, 'true'); }
+    }
     else if (a === 'd-clear') donorPick('');
   });
   document.addEventListener('change', function (e) {

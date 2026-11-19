@@ -17,6 +17,48 @@
   // תפריט התוצאות שבשיחה — בלי «נסלק», שמגיעים אליה רק מ«ממתינים לטיפול».
   var PICK = ['yes', 'pl', 'int', 'cb', 'no', 'rmv'];
   var NO_NAME = 'שם לא ידוע';
+  // ההודעות — מחרוזת למשתמש היא קבוע, כמו באפליקציה.
+  var MSG = {
+    cleared: 'נסלק',
+    clearedPre: 'לסמן שהתרומה של ',
+    clearedQ: ' נסלקה?',
+    stale: 'המצב כבר השתנה — הרשימה תתרענן',
+    clearFail: 'הסימון נכשל — נסו שוב',
+    clearedOk: 'סומן שנסלק',
+    clearNet: 'אין חיבור — לא סומן',
+    pickNext: 'נא לבחור את המצב הבא',
+    amountPos: 'נא להזין סכום גדול מאפס',
+    moveFail: 'ההעברה נכשלה — נסו שוב',
+    moved: 'הועבר',
+    moveNet: 'אין חיבור — לא הועבר',
+    locked: 'האיש בשימוש אצל טלפן אחר',
+    net: 'אין חיבור — נסו שוב',
+    pickStatus: 'נא לבחור את תוצאת השיחה',
+    saveFail: 'השמירה נכשלה — נסו שוב',
+    callSaved: 'השיחה נשמרה',
+    callNet: 'אין חיבור — השיחה לא נשמרה',
+    personEdit: 'עריכת הפרטים',
+    needPhone: 'נא למלא טלפון',
+    saved: 'נשמר',
+    saveNet: 'אין חיבור — לא נשמר',
+    dup: 'כפילות',
+    dupPre: 'כבר ברשימה: ',
+    dupQ: '. לשמור בכל זאת?',
+    save: 'שמירה',
+    del: 'מחיקה',
+    delPerson: 'למחוק את האיש מרשימת השטרות? השיחות שלו יימחקו איתו. המחיקה רכה וניתנת לשחזור במסד.',
+    delFail: 'המחיקה נכשלה — נסו שוב',
+    deleted: 'נמחק',
+    delNet: 'אין חיבור — לא נמחק',
+    callEdit: 'עריכת שיחה',
+    delCall: 'למחוק את השיחה? המחיקה רכה וניתנת לשחזור במסד.',
+    linkBroken: 'הקישור אינו שלם',
+    linkBrokenHelp: 'נא לפתוח את הקישור האישי שקיבלתם.',
+    linkDead: 'הקישור אינו בתוקף',
+    linkDeadHelp: 'נא לבקש קישור חדש.',
+    loadFail: 'הטעינה נכשלה',
+    loadFailHelp: 'נא לבדוק את החיבור לאינטרנט.'
+  };
   var ICONS = {
     call: '<path d="M6.2 3.8h3l1.5 4-2 1.5a12 12 0 0 0 6 6l1.5-2 4 1.5v3a1.6 1.6 0 0 1-1.7 1.6A16.2 16.2 0 0 1 4.6 5.5 1.6 1.6 0 0 1 6.2 3.8z"/>',
     chat: '<path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v7a2.5 2.5 0 0 1-2.5 2.5H11l-4.5 3.8V16A2.5 2.5 0 0 1 4 13.5z"/>',
@@ -152,12 +194,12 @@
     if (!nx || !p) return;
     // «נסלק» — שאלה אחת, והסימון «טופל» על שיחת ה«תרם»; בלי שיחה חדשה.
     if (!nx[2].length) {
-      sure('נסלק', 'לסמן שהתרומה של ' + (p.name || NO_NAME) + (c.amount != null ? ' (' + ils(c.amount) + ')' : '') + ' נסלקה?', 'נסלק').then(function (y) {
+      sure(MSG.cleared, MSG.clearedPre + (p.name || NO_NAME) + (c.amount != null ? ' (' + ils(c.amount) + ')' : '') + MSG.clearedQ, MSG.cleared).then(function (y) {
         if (!y) return;
         gate({ a: 'cleared', id: c.client_id, dev: dev }).then(function (r) {
-          if (!r.ok || !r.calls) { toast(r.why === 'state' ? 'המצב כבר השתנה — הרשימה תתרענן' : 'הסימון נכשל — נסו שוב', true); return; }
-          r.calls.forEach(putCall); afterChange(); toast('סומן שנסלק');
-        }, function () { toast('אין חיבור — לא סומן', true); });
+          if (!r.ok || !r.calls) { toast(r.why === 'state' ? MSG.stale : MSG.clearFail, true); return; }
+          r.calls.forEach(putCall); afterChange(); toast(MSG.clearedOk);
+        }, function () { toast(MSG.clearNet, true); });
       });
       return;
     }
@@ -175,16 +217,16 @@
   }
   function saveNext(id) {
     var to = $('.o.on[data-act="n-to"]'), a = $('#n-amt'), m = $('.o.on[data-act="n-method"]');
-    if (!to) { toast('נא לבחור את המצב הבא', true); return; }
+    if (!to) { toast(MSG.pickNext, true); return; }
     var amount = a && a.value.trim() !== '' ? Number(a.value.replace(/[^\d.]/g, '')) : null;
-    if (amount != null && !(amount > 0)) { toast('נא להזין סכום גדול מאפס', true); return; }
+    if (amount != null && !(amount > 0)) { toast(MSG.amountPos, true); return; }
     var btn = $('[data-act="n-save"]'); busy(btn, true);
     gate({ a: 'next', from: id, to: to.dataset.v, amount: amount, method: m ? m.dataset.v : null, dev: dev,
            id: crypto.randomUUID ? crypto.randomUUID() : 'pg-' + Date.now() + '-' + Math.random().toString(36).slice(2) }).then(function (r) {
       busy(btn, false);
-      if (!r.ok || !r.calls) { toast(r.why === 'state' ? 'המצב כבר השתנה — הרשימה תתרענן' : 'ההעברה נכשלה — נסו שוב', true); return; }
-      r.calls.forEach(putCall); mdlClose(); afterChange(); toast('הועבר');
-    }, function () { busy(btn, false); toast('אין חיבור — לא הועבר', true); });
+      if (!r.ok || !r.calls) { toast(r.why === 'state' ? MSG.stale : MSG.moveFail, true); return; }
+      r.calls.forEach(putCall); mdlClose(); afterChange(); toast(MSG.moved);
+    }, function () { busy(btn, false); toast(MSG.moveNet, true); });
   }
 
   // ── המסך ──
@@ -339,11 +381,11 @@
     if (!keepNav) st.nav = matches().map(function (r) { return r.p.client_id; });
     return gate({ a: 'open', person: id, dev: dev }).then(function (r) {
       st.busy = false;
-      if (!r.ok) { toast(r.why === 'locked' ? 'האיש בשימוש אצל טלפן אחר' : 'אין חיבור — נסו שוב', true); return false; }
+      if (!r.ok) { toast(r.why === 'locked' ? MSG.locked : MSG.net, true); return false; }
       if (st.open && st.open !== id) release(st.open);
       st.open = id; st.call = null; beatSet(); winDraw(true);
       return true;
-    }, function () { st.busy = false; toast('אין חיבור — נסו שוב', true); return false; });
+    }, function () { st.busy = false; toast(MSG.net, true); return false; });
   }
   function step(d) {
     function at(j) {
@@ -359,17 +401,17 @@
   function save() {
     var p = personById(st.open), s = pickedStatus();
     if (!p) return null;
-    if (!STATUS[s]) { toast('נא לבחור את תוצאת השיחה', true); return null; }
+    if (!STATUS[s]) { toast(MSG.pickStatus, true); return null; }
     var give = GIVE.indexOf(s) >= 0, a = $('#amt'), w = $('#when'), n = $('#note'), on = $('.o.on[data-act="method"]');
     var c = { amount: give && a && a.value.trim() !== '' ? Number(a.value.replace(/[^\d.]/g, '')) : null,
               method: give && on ? on.dataset.v : null,
               callback_at: s === 'cb' && w && w.value ? new Date(w.value).toISOString() : null,
               note: n && n.value.trim() ? n.value.trim() : null };
-    if (c.amount != null && !(c.amount > 0)) { toast('נא להזין סכום גדול מאפס', true); return null; }
+    if (c.amount != null && !(c.amount > 0)) { toast(MSG.amountPos, true); return null; }
     c.status = s; c.person_client_id = p.client_id;
     c.client_id = st.call || (crypto.randomUUID ? crypto.randomUUID() : 'pg-' + Date.now() + '-' + Math.random().toString(36).slice(2));
     return gate({ a: 'call', call: c }).then(function (r) {
-      if (!r.ok || !r.call) { toast('השמירה נכשלה — נסו שוב', true); return false; }
+      if (!r.ok || !r.call) { toast(MSG.saveFail, true); return false; }
       st.call = r.call.client_id;
       var i = st.calls.findIndex(function (x) { return x.client_id === r.call.client_id; });
       if (i >= 0) st.calls[i] = r.call; else st.calls.push(r.call);
@@ -379,9 +421,9 @@
       if (d) d.innerHTML = dashHTML();
       if (l) l.innerHTML = listHTML();
       toolsSync();
-      toast('השיחה נשמרה');
+      toast(MSG.callSaved);
       return true;
-    }, function () { toast('אין חיבור — השיחה לא נשמרה', true); return false; });
+    }, function () { toast(MSG.callNet, true); return false; });
   }
 
   // ── העריכה — כמו באפליקציה: פרטי האיש ומחיקתו, וכל שיחה קודמת ומחיקתה. ──
@@ -395,13 +437,14 @@
     document.body.appendChild(box);
   }
   function mdlClose() { var m = $('.mdl'); if (m) m.remove(); }
-  function sure(title, text, ok, cls) {
+  // danger — שאלת מחיקה: האישור באדום הרך; בלעדיו — בצבע האפליקציה, כמו חלון השאלה באפליקציה.
+  function sure(title, text, ok, danger) {
     return new Promise(function (res) {
       var box = document.createElement('div');
       box.className = 'ask';
       box.innerHTML = '<div class="ask-bg" data-ask="no"></div><div class="ask-in" role="alertdialog" aria-modal="true" aria-label="' + esc(title) + '">' +
         '<h3>' + esc(title) + '</h3><p>' + esc(text) + '</p>' +
-        '<div class="ask-btns"><button class="btn ghost" data-ask="no">ביטול</button><button class="btn ' + (cls == null ? 'danger' : cls) + '" data-ask="yes">' + esc(ok) + '</button></div></div>';
+        '<div class="ask-btns"><button class="btn ghost" data-ask="no">ביטול</button><button class="btn' + (danger ? ' danger' : '') + '" data-ask="yes">' + esc(ok) + '</button></div></div>';
       document.body.appendChild(box);
       box.addEventListener('click', function (e) {
         var b = e.target.closest('[data-ask]'); if (!b) return;
@@ -447,7 +490,7 @@
   }
   function formPerson(p) {
     var d = p.donor_client_id ? donorById(p.donor_client_id) : null;
-    mdl('עריכת הפרטים',
+    mdl(MSG.personEdit,
       '<div class="fld"><span>כרטיס בגיוס</span><input type="hidden" id="p-donor" value="' + esc(d ? d.client_id : '') + '"><div id="d-box">' + donorBoxHTML(d) + '</div></div>' +
       '<div class="f2"><label class="fld"><span>שם</span><input class="inp" id="p-name" value="' + esc(p.name || '') + '"' + (d ? ' disabled' : '') + '></label>' +
       '<label class="fld"><span>טלפון *</span><input class="inp" id="p-phone" inputmode="tel" dir="ltr" value="' + esc(p.phone || '') + '"></label></div>' +
@@ -468,31 +511,31 @@
   function savePerson() {
     var p = personById(st.open); if (!p) return;
     var donor = $('#p-donor').value || null, phone = $('#p-phone').value.replace(/[\s-]/g, ''), name = donor ? '' : $('#p-name').value;
-    if (!digits(phone)) { toast('נא למלא טלפון', true); return; }
+    if (!digits(phone)) { toast(MSG.needPhone, true); return; }
     var dup = dupOf(p.client_id, donor ? donorById(donor).name : name, phone);
     var go = function () {
       var btn = $('[data-act="p-save"]'); busy(btn, true);
       return gate({ a: 'person', id: p.client_id, donor: donor, name: nul(name), phone: phone, note: nul($('#p-note').value), dev: dev }).then(function (r) {
         busy(btn, false);
-        if (!r.ok || !r.person) { toast(r.why === 'phone' ? 'נא למלא טלפון' : 'השמירה נכשלה — נסו שוב', true); return; }
+        if (!r.ok || !r.person) { toast(r.why === 'phone' ? MSG.needPhone : MSG.saveFail, true); return; }
         var i = st.people.findIndex(function (x) { return x.client_id === p.client_id; });
         if (i >= 0) st.people[i] = r.person;
-        mdlClose(); afterChange(); toast('נשמר');
-      }, function () { busy(btn, false); toast('אין חיבור — לא נשמר', true); });
+        mdlClose(); afterChange(); toast(MSG.saved);
+      }, function () { busy(btn, false); toast(MSG.saveNet, true); });
     };
     if (!dup) return go();
-    sure('כפילות', 'כבר ברשימה: ' + (dup.name || NO_NAME) + ' · ' + phoneShow(dup.phone) + '. לשמור בכל זאת?', 'שמירה').then(function (y) { if (y) go(); });
+    sure(MSG.dup, MSG.dupPre + (dup.name || NO_NAME) + ' · ' + phoneShow(dup.phone) + MSG.dupQ, MSG.save).then(function (y) { if (y) go(); });
   }
   function delPerson() {
     var p = personById(st.open); if (!p) return;
-    sure('מחיקה', 'למחוק את האיש מרשימת השטרות? השיחות שלו יימחקו איתו. המחיקה רכה וניתנת לשחזור במסד.', 'מחיקה').then(function (y) {
+    sure(MSG.del, MSG.delPerson, MSG.del, true).then(function (y) {
       if (!y) return;
       gate({ a: 'person_del', id: p.client_id, dev: dev }).then(function (r) {
-        if (!r.ok) { toast('המחיקה נכשלה — נסו שוב', true); return; }
+        if (!r.ok) { toast(MSG.delFail, true); return; }
         st.people = st.people.filter(function (x) { return x.client_id !== p.client_id; });
         st.calls = st.calls.filter(function (x) { return x.person_client_id !== p.client_id; });
-        mdlClose(); st.open = null; st.call = null; snap = ''; beatSet(); ix = null; winDraw(); refresh(); toast('נמחק');
-      }, function () { toast('אין חיבור — לא נמחק', true); });
+        mdlClose(); st.open = null; st.call = null; snap = ''; beatSet(); ix = null; winDraw(); refresh(); toast(MSG.deleted);
+      }, function () { toast(MSG.delNet, true); });
     });
   }
 
@@ -500,7 +543,7 @@
   function formCall(c) {
     var give = GIVE.indexOf(c.status) >= 0, ambs = st.ambs.slice();
     if (ambs.indexOf(c.ambassador) < 0) ambs.push(c.ambassador);
-    mdl('עריכת שיחה',
+    mdl(MSG.callEdit,
       '<div class="f2"><label class="fld"><span>תוצאה *</span><select class="inp" id="c-status">' + Object.keys(STATUS).map(function (k) {
           return '<option value="' + k + '"' + (c.status === k ? ' selected' : '') + '>' + esc(STATUS[k].l) + '</option>'; }).join('') + '</select></label>' +
         '<label class="fld"><span>שגריר מטלפן *</span><select class="inp" id="c-amb">' + ambs.map(function (a) {
@@ -521,28 +564,28 @@
   }
   function saveCallEdit(id) {
     var s = $('#c-status').value, give = GIVE.indexOf(s) >= 0, a = $('#c-amt'), w = $('#c-when'), on = $('.o.on[data-act="c-method"]');
-    if (!STATUS[s]) { toast('נא לבחור את תוצאת השיחה', true); return; }
+    if (!STATUS[s]) { toast(MSG.pickStatus, true); return; }
     var c = { client_id: id, status: s, ambassador: $('#c-amb').value,
               amount: give && a && a.value.trim() !== '' ? Number(a.value.replace(/[^\d.]/g, '')) : null,
               method: give && on ? on.dataset.v : null,
               callback_at: s === 'cb' && w && w.value ? new Date(w.value).toISOString() : null, note: nul($('#c-note').value) };
-    if (c.amount != null && !(c.amount > 0)) { toast('נא להזין סכום גדול מאפס', true); return; }
+    if (c.amount != null && !(c.amount > 0)) { toast(MSG.amountPos, true); return; }
     var btn = $('[data-act="c-save"]'); busy(btn, true);
     gate({ a: 'call_edit', call: c, dev: dev }).then(function (r) {
       busy(btn, false);
-      if (!r.ok || !r.call) { toast('השמירה נכשלה — נסו שוב', true); return; }
-      putCall(r.call); mdlClose(); afterChange(); toast('השיחה נשמרה');
-    }, function () { busy(btn, false); toast('אין חיבור — השיחה לא נשמרה', true); });
+      if (!r.ok || !r.call) { toast(MSG.saveFail, true); return; }
+      putCall(r.call); mdlClose(); afterChange(); toast(MSG.callSaved);
+    }, function () { busy(btn, false); toast(MSG.callNet, true); });
   }
   function delCall(id) {
-    sure('מחיקה', 'למחוק את השיחה? המחיקה רכה וניתנת לשחזור במסד.', 'מחיקה').then(function (y) {
+    sure(MSG.del, MSG.delCall, MSG.del, true).then(function (y) {
       if (!y) return;
       gate({ a: 'call_del', id: id, dev: dev }).then(function (r) {
-        if (!r.ok) { toast('המחיקה נכשלה — נסו שוב', true); return; }
+        if (!r.ok) { toast(MSG.delFail, true); return; }
         st.calls = st.calls.filter(function (x) { return x.client_id !== id; });
         if (st.call === id) st.call = null;
-        mdlClose(); afterChange(); toast('נמחק');
-      }, function () { toast('אין חיבור — לא נמחק', true); });
+        mdlClose(); afterChange(); toast(MSG.deleted);
+      }, function () { toast(MSG.delNet, true); });
     });
   }
 
@@ -604,11 +647,11 @@
   }
 
   // ── עלייה ──
-  if (!code) { fail('הקישור אינו שלם', 'נא לפתוח את הקישור האישי שקיבלתם.'); return; }
+  if (!code) { fail(MSG.linkBroken, MSG.linkBrokenHelp); return; }
   gate({ a: 'load' }).then(function (r) {
     if (!r.ok) {
-      if (r.why === 'code') fail('הקישור אינו בתוקף', 'נא לבקש קישור חדש.');
-      else fail('הטעינה נכשלה', 'נא לבדוק את החיבור לאינטרנט.', true);
+      if (r.why === 'code') fail(MSG.linkDead, MSG.linkDeadHelp);
+      else fail(MSG.loadFail, MSG.loadFailHelp, true);
       return;
     }
     st.amb = r.amb; st.people = r.people; st.calls = r.calls; st.methods = r.methods || []; st.ambs = r.ambs || []; st.donors = r.donors || [];
@@ -626,5 +669,5 @@
       toolsSync();
       }).catch(function () { });
     }, POLL_MS);
-  }, function () { fail('הטעינה נכשלה', 'נא לבדוק את החיבור לאינטרנט.', true); });
+  }, function () { fail(MSG.loadFail, MSG.loadFailHelp, true); });
 })();
